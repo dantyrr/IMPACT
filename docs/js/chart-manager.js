@@ -211,6 +211,14 @@ class ChartManager {
         };
 
         const getVal = (d, type) => {
+            const pbt = d.pub_by_type;
+            if (pbt) {
+                if (type === 'other') {
+                    return (pbt.other || 0) + (pbt.guideline || 0) + (pbt.case_report || 0);
+                }
+                return pbt[type] || 0;
+            }
+            // Fallback for old data without pub_by_type
             const bt = d.by_type;
             if (!bt) {
                 if (type === 'research') return d.research || 0;
@@ -249,7 +257,7 @@ class ChartManager {
                 responsive: true,
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
-                    title: { display: true, text: 'Paper Composition (24-mo Window)', font: { size: 14 } },
+                    title: { display: true, text: 'Monthly Paper Composition', font: { size: 14 } },
                     legend: { position: 'bottom' },
                     tooltip: {
                         callbacks: {
@@ -306,6 +314,12 @@ class ChartManager {
         };
 
         const getData = (ts, type) => ts.map(d => {
+            const pbt = d.pub_by_type;
+            if (pbt) {
+                if (type === 'other') return (pbt.other || 0) + (pbt.guideline || 0) + (pbt.case_report || 0);
+                return pbt[type] || 0;
+            }
+            // Fallback for old data without pub_by_type
             const bt = d.by_type;
             if (!bt) return type === 'research' ? (d.research || 0) : type === 'review' ? (d.reviews || 0) : 0;
             if (type === 'other') return (bt.other?.papers || 0) + (bt.guideline?.papers || 0) + (bt.case_report?.papers || 0);
@@ -358,7 +372,7 @@ class ChartManager {
                     responsive: true,
                     interaction: { intersect: false, mode: 'index' },
                     plugins: {
-                        title: { display: true, text: `Paper Composition — ${jData.journal}`, font: { size: 14 } },
+                        title: { display: true, text: `Monthly Paper Composition — ${jData.journal}`, font: { size: 14 } },
                         legend: { position: 'bottom' },
                         tooltip: {
                             callbacks: {
@@ -442,7 +456,7 @@ class ChartManager {
                 responsive: true,
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
-                    title: { display: true, text: 'Paper Composition Comparison', font: { size: 14 } },
+                    title: { display: true, text: 'Monthly Paper Composition Comparison', font: { size: 14 } },
                     legend: { position: 'bottom' },
                 },
                 scales: {

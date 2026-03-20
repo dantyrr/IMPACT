@@ -266,6 +266,23 @@ class DatabaseManager:
         )
         return [dict(r) for r in cursor.fetchall()]
 
+    def count_papers_by_type_in_month(self, journal_id: int,
+                                       year: int, month: int) -> List[Dict]:
+        """
+        Count papers published in a specific month by pub_type.
+        Returns list of dicts with keys: pub_type, paper_count.
+        """
+        cursor = self.conn.cursor()
+        cursor.execute(
+            """SELECT pub_type, COUNT(*) AS paper_count
+               FROM papers
+               WHERE journal_id = ?
+                 AND pub_year = ? AND pub_month = ?
+               GROUP BY pub_type""",
+            (journal_id, year, month),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
     def get_citation_count_for_paper(self, pmid: int) -> int:
         """Total citation count for a paper (all time)."""
         cursor = self.conn.cursor()

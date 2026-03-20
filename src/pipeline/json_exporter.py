@@ -37,6 +37,7 @@ class JSONExporter:
                 "reviews": s["review_count"],
                 "citations": s["citation_count"],
                 "by_type": s.get("by_type", {}),
+                "pub_by_type": s.get("pub_by_type", {}),
             }
             for s in timeseries
         ]

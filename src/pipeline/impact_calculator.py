@@ -160,6 +160,15 @@ class ImpactCalculator:
             by_type[cat]["papers"] += row["paper_count"]
             by_type[cat]["citations"] += row["citation_count"]
 
+        # Actual papers published this month (not rolling window)
+        raw_pub = self.db.count_papers_by_type_in_month(
+            journal_id, target_year, target_month
+        )
+        pub_by_type = {}
+        for row in raw_pub:
+            cat = classify_pub_type(row["pub_type"])
+            pub_by_type[cat] = pub_by_type.get(cat, 0) + row["paper_count"]
+
         return {
             "month": f"{target_year}-{target_month:02d}",
             "rolling_if": round(rolling_if, 3),
@@ -170,6 +179,7 @@ class ImpactCalculator:
             "citation_count": total_citations,
             "research_citation_count": research_citations,
             "by_type": by_type,
+            "pub_by_type": pub_by_type,
             "paper_window": f"{paper_start_date} to {paper_end_date}",
             "citation_window": f"{cite_start_date} to {cite_end_date}",
         }
