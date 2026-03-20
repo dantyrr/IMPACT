@@ -483,10 +483,17 @@ class IMPACTApp {
             ).join('');
 
             return `<div class="compare-metrics-journal">
-                <div class="compare-metrics-header" style="border-left: 4px solid ${color}; padding-left: 0.5rem;">${j.journal}</div>
+                <div class="compare-metrics-header" style="border-left: 4px solid ${color}; padding-left: 0.5rem;"><a href="#" class="compare-journal-link" data-slug="${j.slug}" style="color: inherit; text-decoration: underline; cursor: pointer;">${j.journal}</a></div>
                 <div class="metrics-row">${cards}</div>
             </div>`;
         }).join('');
+
+        container.querySelectorAll('.compare-journal-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.showJournalDetail(link.dataset.slug);
+            });
+        });
     }
 
     _downloadJcCompositionCSV() {
