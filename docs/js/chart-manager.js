@@ -314,13 +314,16 @@ class ChartManager {
      * @param {string[]} visibleTypes
      * @param {string} windowKey - timeseries key
      */
-    createCompareCompositionChart(canvasId, journalsData, colorMap, visibleTypes, windowKey, scaleOverrides = {}, showCombined = true, showIndividual = true) {
+    createCompareCompositionChart(canvasId, journalsData, colorMap, visibleTypes, windowKey, scaleOverrides = {}, showCombined = true, showIndividual = true, binSize = 1) {
         const ctx = document.getElementById(canvasId);
         if (!ctx) return;
         this._destroy(canvasId);
 
         const allTypes = ['research', 'review', 'editorial', 'letter', 'other'];
         const shown = visibleTypes || allTypes;
+        const bin = Math.max(1, Math.min(12, binSize || 1));
+        const binLabels = { 1: 'Monthly', 2: 'Bi-monthly', 3: 'Quarterly', 4: 'Tri-annual', 6: 'Semi-annual', 12: 'Yearly' };
+        const periodLabel = binLabels[bin] || 'Monthly';
 
         const typeLabels = {
             research: 'Research', review: 'Reviews',
@@ -331,18 +334,37 @@ class ChartManager {
             editorial: [2, 2], letter: [8, 4, 2, 4], other: [12, 3],
         };
 
-        const getData = (ts, type) => ts.map(d => {
+        const getVal = (d, type) => {
             const pbt = d.pub_by_type;
             if (pbt) {
                 if (type === 'other') return (pbt.other || 0) + (pbt.guideline || 0) + (pbt.case_report || 0);
                 return pbt[type] || 0;
             }
-            // Fallback for old data without pub_by_type
             const bt = d.by_type;
             if (!bt) return type === 'research' ? (d.research || 0) : type === 'review' ? (d.reviews || 0) : 0;
             if (type === 'other') return (bt.other?.papers || 0) + (bt.guideline?.papers || 0) + (bt.case_report?.papers || 0);
             return bt[type]?.papers || 0;
-        });
+        };
+
+        /** Aggregate a timeseries into bins, returning {labels, getData(type)} */
+        const binTimeseries = (ts) => {
+            if (bin <= 1) {
+                const labels = ts.map(d => d.month);
+                const getData = (type) => ts.map(d => getVal(d, type));
+                return { labels, getData };
+            }
+            const binnedLabels = [];
+            const chunks = [];
+            for (let i = 0; i < ts.length; i += bin) {
+                const chunk = ts.slice(i, i + bin);
+                const first = chunk[0].month;
+                const last = chunk[chunk.length - 1].month;
+                binnedLabels.push(chunk.length === 1 ? first : `${first} – ${last}`);
+                chunks.push(chunk);
+            }
+            const getData = (type) => chunks.map(chunk => chunk.reduce((sum, d) => sum + getVal(d, type), 0));
+            return { labels: binnedLabels, getData };
+        };
 
         // Clone scaleOverrides so _expandMonthRange can mutate it
         const so = JSON.parse(JSON.stringify(scaleOverrides));
@@ -353,9 +375,8 @@ class ChartManager {
             const raw = jData[windowKey] || jData.timeseries;
             const startIdx = raw.findIndex(d => d.papers > 0);
             const ts = startIdx >= 0 ? raw.slice(startIdx) : raw;
-            let labels = ts.map(d => d.month);
-            const sMonthMap = new Map(ts.map((d, i) => [d.month, i]));
-            labels = this._expandMonthRange(labels, so);
+
+            const { labels, getData } = binTimeseries(ts);
 
             const typeConfig = {
                 research:  { label: 'Research Articles', color: this.palette[0], bg: 'rgba(0, 114, 178, 0.4)' },
@@ -365,15 +386,9 @@ class ChartManager {
                 other:     { label: 'Other',              color: this.palette[7], bg: 'rgba(127, 127, 127, 0.4)' },
             };
 
-            const getDataSingle = (type) => labels.map(m => {
-                const i = sMonthMap.get(m);
-                if (i === undefined) return 0;
-                return getData(ts, type)[i];
-            });
-
             const datasets = allTypes.filter(t => shown.includes(t)).map(type => ({
                 label: typeConfig[type].label,
-                data: getDataSingle(type),
+                data: getData(type),
                 borderColor: typeConfig[type].color,
                 backgroundColor: typeConfig[type].bg,
                 borderWidth: 1.5,
@@ -390,7 +405,7 @@ class ChartManager {
                     responsive: true,
                     interaction: { intersect: false, mode: 'index' },
                     plugins: {
-                        title: { display: true, text: `Monthly Paper Composition — ${jData.journal}`, font: { size: 14 } },
+                        title: { display: true, text: `${periodLabel} Paper Composition — ${jData.journal}`, font: { size: 14 } },
                         legend: { position: 'bottom' },
                         tooltip: {
                             callbacks: {
@@ -399,7 +414,7 @@ class ChartManager {
                         }
                     },
                     scales: {
-                        x: { title: { display: true, text: 'Month' }, ticks: { maxTicksLimit: 12 }, ...(so.x || {}) },
+                        x: { title: { display: true, text: bin <= 1 ? 'Month' : 'Period' }, ticks: { maxTicksLimit: 12 }, ...(bin <= 1 ? (so.x || {}) : {}) },
                         y: { title: { display: true, text: 'Papers' }, stacked: true, beginAtZero: true, ...(so.y || {}) },
                     }
                 }
@@ -407,13 +422,35 @@ class ChartManager {
             return;
         }
 
-        // Multiple journals: line chart with journal colors + type dashes
-        let allMonths = [...new Set(journalsData.flatMap(j => {
+        // Multiple journals: build a unified label set from all journals' binned data
+        // First, collect all unique months across journals to build a master timeline
+        let masterMonths = [...new Set(journalsData.flatMap(j => {
             const raw = j[windowKey] || j.timeseries;
             const si = raw.findIndex(d => d.papers > 0);
             return (si >= 0 ? raw.slice(si) : raw).map(d => d.month);
         }))].sort();
-        allMonths = this._expandMonthRange(allMonths, so);
+        if (bin <= 1) masterMonths = this._expandMonthRange(masterMonths, so);
+
+        // Bin the master month list to create unified labels
+        let chartLabels;
+        if (bin <= 1) {
+            chartLabels = masterMonths;
+        } else {
+            chartLabels = [];
+            for (let i = 0; i < masterMonths.length; i += bin) {
+                const chunk = masterMonths.slice(i, i + bin);
+                const first = chunk[0];
+                const last = chunk[chunk.length - 1];
+                chartLabels.push(chunk.length === 1 ? first : `${first} – ${last}`);
+            }
+        }
+
+        // Build a lookup: for each master bin, which source months belong to it
+        const binRanges = [];
+        for (let i = 0; i < masterMonths.length; i += Math.max(1, bin)) {
+            const chunk = masterMonths.slice(i, i + Math.max(1, bin));
+            binRanges.push(new Set(chunk));
+        }
 
         const datasets = [];
         const multiType = shown.length > 1;
@@ -425,39 +462,49 @@ class ChartManager {
             const ts = startIdx >= 0 ? raw.slice(startIdx) : raw;
             const monthMap = new Map(ts.map((d, i) => [d.month, i]));
 
+            // For each bin, sum the values from this journal's months that fall in the bin
+            const getBinnedData = (type) => binRanges.map(monthSet => {
+                let sum = 0;
+                let hasData = false;
+                for (const m of monthSet) {
+                    const i = monthMap.get(m);
+                    if (i !== undefined) {
+                        sum += getVal(ts[i], type);
+                        hasData = true;
+                    }
+                }
+                return hasData ? sum : null;
+            });
+
             if (!multiType) {
-                // Single type selected
                 const typeKey = shown[0];
-                const typeData = getData(ts, typeKey);
-                const data = allMonths.map(m => { const i = monthMap.get(m); return i !== undefined ? typeData[i] : null; });
                 datasets.push({
                     label: jData.journal,
-                    data, borderColor: color, backgroundColor: 'transparent',
+                    data: getBinnedData(typeKey), borderColor: color, backgroundColor: 'transparent',
                     borderWidth: 2.5, tension: 0.3, fill: false,
                     pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
                 });
             } else {
-                // Total papers line (solid) — Combined
                 if (showCombined) {
-                    const typeArrays = shown.map(t => getData(ts, t));
-                    const totalData = ts.map((_, idx) => typeArrays.reduce((sum, arr) => sum + (arr[idx] || 0), 0));
-                    const totalMapped = allMonths.map(m => { const i = monthMap.get(m); return i !== undefined ? totalData[i] : null; });
+                    const typeArrays = shown.map(t => getBinnedData(t));
+                    const totalData = chartLabels.map((_, idx) => {
+                        const vals = typeArrays.map(arr => arr[idx]);
+                        if (vals.every(v => v === null)) return null;
+                        return vals.reduce((sum, v) => sum + (v || 0), 0);
+                    });
                     datasets.push({
                         label: `${jData.journal} — Total`,
-                        data: totalMapped, borderColor: color, backgroundColor: 'transparent',
+                        data: totalData, borderColor: color, backgroundColor: 'transparent',
                         borderWidth: 2.5, tension: 0.3, fill: false,
                         pointRadius: 0, pointHoverRadius: 5, spanGaps: true,
                     });
                 }
 
-                // Per-type lines (dashed) — Individual
                 if (showIndividual) {
                     shown.forEach(typeKey => {
-                        const typeData = getData(ts, typeKey);
-                        const data = allMonths.map(m => { const i = monthMap.get(m); return i !== undefined ? typeData[i] : null; });
                         datasets.push({
                             label: `${jData.journal} — ${typeLabels[typeKey]}`,
-                            data, borderColor: color, backgroundColor: 'transparent',
+                            data: getBinnedData(typeKey), borderColor: color, backgroundColor: 'transparent',
                             borderWidth: 1.5, borderDash: typeDashes[typeKey] || [],
                             tension: 0.3, fill: false,
                             pointRadius: 0, pointHoverRadius: 4, spanGaps: true,
@@ -469,16 +516,16 @@ class ChartManager {
 
         this.charts[canvasId] = new Chart(ctx, {
             type: 'line',
-            data: { labels: allMonths, datasets },
+            data: { labels: chartLabels, datasets },
             options: {
                 responsive: true,
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
-                    title: { display: true, text: 'Monthly Paper Composition Comparison', font: { size: 14 } },
+                    title: { display: true, text: `${periodLabel} Paper Composition Comparison`, font: { size: 14 } },
                     legend: { position: 'bottom' },
                 },
                 scales: {
-                    x: { title: { display: true, text: 'Month' }, ticks: { maxTicksLimit: 12 }, ...(so.x || {}) },
+                    x: { title: { display: true, text: bin <= 1 ? 'Month' : 'Period' }, ticks: { maxTicksLimit: 12 }, ...(bin <= 1 ? (so.x || {}) : {}) },
                     y: { title: { display: true, text: 'Papers' }, beginAtZero: true, ...(so.y || {}) },
                 }
             }

@@ -222,6 +222,12 @@ class IMPACTApp {
             () => this.updateJournalsTrendsChart()
         );
 
+        // Composition bin select
+        const jcCompBinSel = document.getElementById('jc-comp-bin-select');
+        if (jcCompBinSel) {
+            jcCompBinSel.addEventListener('change', () => this.updateJournalsTrendsChart());
+        }
+
         // Composition chart download buttons
         ['png', 'jpg', 'pdf'].forEach(fmt => {
             const btn = document.getElementById(`jc-comp-dl-${fmt}`);
@@ -366,9 +372,10 @@ class IMPACTApp {
             compContainer.style.display = '';
             this._populateXRangeSelects('jc-comp', allMonths);
             const compScaleOverrides = this._buildScaleOverrides(this._jcCompXMin, this._jcCompXMax, this._jcCompYMin, this._jcCompYMax);
+            const jcCompBin = parseInt((document.getElementById('jc-comp-bin-select') || {}).value, 10) || 1;
             chartManager.createCompareCompositionChart(
                 'jc-composition-chart', journalsData, colorMap, checkedTypes, this.jcWindow, compScaleOverrides,
-                this._jcCompShowCombined, this._jcCompShowIndividual
+                this._jcCompShowCombined, this._jcCompShowIndividual, jcCompBin
             );
             document.getElementById('jc-comp-range-controls').style.display = '';
             const compBar = document.getElementById('jc-composition-download-bar');
