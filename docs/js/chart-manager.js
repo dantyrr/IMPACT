@@ -185,19 +185,14 @@ class ChartManager {
      * @param {Array} timeseries
      * @param {string[]} visibleTypes - which types to show (default all 5)
      */
-    createCompositionChart(canvasId, timeseries, visibleTypes, scaleOverrides = {}) {
+    createCompositionChart(canvasId, timeseries, visibleTypes, scaleOverrides = {}, binSize = 1) {
         const ctx = document.getElementById(canvasId);
         if (!ctx) return;
 
         this._destroy(canvasId);
 
         const startIdx = timeseries.findIndex(d => d.papers > 0);
-        const data = startIdx >= 0 ? timeseries.slice(startIdx) : timeseries;
-        let labels = data.map(d => d.month);
-        const monthMap = new Map(data.map((d, i) => [d.month, i]));
-
-        // Expand labels to cover scaleOverrides date range
-        labels = this._expandMonthRange(labels, scaleOverrides);
+        const rawData = startIdx >= 0 ? timeseries.slice(startIdx) : timeseries;
 
         const allTypes = ['research', 'review', 'editorial', 'letter', 'other'];
         const shown = visibleTypes || allTypes;
@@ -218,7 +213,6 @@ class ChartManager {
                 }
                 return pbt[type] || 0;
             }
-            // Fallback for old data without pub_by_type
             const bt = d.by_type;
             if (!bt) {
                 if (type === 'research') return d.research || 0;
@@ -231,10 +225,34 @@ class ChartManager {
             return bt[type]?.papers || 0;
         };
 
-        const getData = (type) => labels.map(m => {
-            const i = monthMap.get(m);
-            return i !== undefined ? getVal(data[i], type) : 0;
+        // Aggregate into bins
+        const bin = Math.max(1, Math.min(12, binSize || 1));
+        let data, labels;
+        if (bin <= 1) {
+            data = rawData;
+            labels = data.map(d => d.month);
+        } else {
+            data = [];
+            for (let i = 0; i < rawData.length; i += bin) {
+                const chunk = rawData.slice(i, i + bin);
+                const firstMonth = chunk[0].month;
+                const lastMonth = chunk[chunk.length - 1].month;
+                const label = chunk.length === 1 ? firstMonth : `${firstMonth} – ${lastMonth}`;
+                const binned = { month: label, _months: chunk };
+                data.push(binned);
+            }
+            labels = data.map(d => d.month);
+        }
+
+        const getData = (type) => data.map(d => {
+            if (d._months) {
+                return d._months.reduce((sum, m) => sum + getVal(m, type), 0);
+            }
+            return getVal(d, type);
         });
+
+        const binLabels = { 1: 'Monthly', 2: 'Bi-monthly', 3: 'Quarterly', 4: 'Tri-annual', 6: 'Semi-annual', 12: 'Yearly' };
+        const titleText = `${binLabels[bin] || 'Monthly'} Paper Composition`;
 
         const datasets = allTypes
             .filter(t => shown.includes(t))
@@ -257,7 +275,7 @@ class ChartManager {
                 responsive: true,
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
-                    title: { display: true, text: 'Monthly Paper Composition', font: { size: 14 } },
+                    title: { display: true, text: titleText, font: { size: 14 } },
                     legend: { position: 'bottom' },
                     tooltip: {
                         callbacks: {
@@ -273,9 +291,9 @@ class ChartManager {
                 },
                 scales: {
                     x: {
-                        title: { display: true, text: 'Month' },
+                        title: { display: true, text: bin <= 1 ? 'Month' : 'Period' },
                         ticks: { maxTicksLimit: 12 },
-                        ...(scaleOverrides.x || {}),
+                        ...(bin <= 1 ? (scaleOverrides.x || {}) : {}),
                     },
                     y: {
                         title: { display: true, text: 'Papers' },

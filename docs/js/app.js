@@ -630,21 +630,27 @@ class IMPACTApp {
             this._populateXRangeSelects('detail', allMonths);
             const detailScaleOverrides = this._buildScaleOverrides(this.detailXMin, this.detailXMax, this.detailYMin, this.detailYMax);
             chartManager.createMultiSeriesChart('journal-chart', series, this._journalYZero, detailScaleOverrides);
-            chartManager.createCompositionChart('composition-chart', ts, this._getCompositionVisibleTypes(), detailScaleOverrides);
+            chartManager.createCompositionChart('composition-chart', ts, this._getCompositionVisibleTypes(), detailScaleOverrides, this._getCompositionBinSize());
             document.getElementById('detail-range-controls').style.display = '';
 
             // Show composition type checkboxes
             const compCheckboxes = document.getElementById('composition-type-checkboxes');
             if (compCheckboxes) {
                 compCheckboxes.style.display = '';
+                const redrawComp = () => {
+                    const rawTs = data[this.currentWindow] || data.timeseries;
+                    const so = this._buildScaleOverrides(this.detailXMin, this.detailXMax, null, null);
+                    chartManager.createCompositionChart('composition-chart', rawTs, this._getCompositionVisibleTypes(), so, this._getCompositionBinSize());
+                };
                 compCheckboxes.querySelectorAll('input[type="checkbox"]').forEach(cb => {
                     cb.checked = true;
-                    cb.onchange = () => {
-                        const rawTs = data[this.currentWindow] || data.timeseries;
-                        const so = this._buildScaleOverrides(this.detailXMin, this.detailXMax, null, null);
-                        chartManager.createCompositionChart('composition-chart', rawTs, this._getCompositionVisibleTypes(), so);
-                    };
+                    cb.onchange = redrawComp;
                 });
+                const binSel = document.getElementById('composition-bin-select');
+                if (binSel) {
+                    binSel.value = '1';
+                    binSel.onchange = redrawComp;
+                }
             }
 
             // Show download bars and wire up buttons
@@ -836,7 +842,7 @@ class IMPACTApp {
         const redrawSecondary = () => {
             const rawTs = data[this.currentWindow] || data.timeseries;
             const scaleOverrides = this._buildScaleOverrides(this.detailXMin, this.detailXMax, null, null);
-            chartManager.createCompositionChart('composition-chart', rawTs, this._getCompositionVisibleTypes(), scaleOverrides);
+            chartManager.createCompositionChart('composition-chart', rawTs, this._getCompositionVisibleTypes(), scaleOverrides, this._getCompositionBinSize());
         };
 
         // Window toggle — affects all charts
@@ -902,6 +908,11 @@ class IMPACTApp {
         const container = document.getElementById('composition-type-checkboxes');
         if (!container) return ['research', 'review', 'editorial', 'letter', 'other'];
         return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+    }
+
+    _getCompositionBinSize() {
+        const sel = document.getElementById('composition-bin-select');
+        return sel ? parseInt(sel.value, 10) || 1 : 1;
     }
 
     _setupToggleGroup(containerId, callback, dataAttr = 'data-mode') {

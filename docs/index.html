@@ -237,6 +237,16 @@
                 <label><input type="checkbox" value="editorial" checked> Editorials</label>
                 <label><input type="checkbox" value="letter" checked> Letters</label>
                 <label><input type="checkbox" value="other" checked> Other</label>
+                <label style="margin-left:1rem;">Bin:
+                    <select id="composition-bin-select" style="font-size:0.85rem;">
+                        <option value="1" selected>Monthly</option>
+                        <option value="2">Bi-monthly</option>
+                        <option value="3">Quarterly</option>
+                        <option value="4">Tri-annual</option>
+                        <option value="6">Semi-annual</option>
+                        <option value="12">Yearly</option>
+                    </select>
+                </label>
             </div>
             <div class="chart-container">
                 <canvas id="composition-chart"></canvas>
