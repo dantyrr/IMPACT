@@ -1,0 +1,11 @@
+name = "impact-profiles"
+main = "profile-worker.js"
+compatibility_date = "2024-01-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "impact-data"
+
+# Deploy: npx wrangler deploy --config workers/wrangler.toml
+# The worker URL will be: https://impact-profiles.<your-subdomain>.workers.dev
+# Update PROFILE_WORKER_URL in docs/js/data-loader.js after deploying.

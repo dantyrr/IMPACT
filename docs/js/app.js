@@ -2198,9 +2198,10 @@ class IMPACTApp {
         }
     }
 
-    _saveProfile() {
+    async _saveProfile() {
         const nameInput = document.getElementById('author-profile-name');
         const status = document.getElementById('author-profile-status');
+        const saveBtn = document.getElementById('author-save-profile-btn');
         const slug = nameInput.value.trim().replace(/\s+/g, '_');
 
         if (!slug) {
@@ -2210,7 +2211,7 @@ class IMPACTApp {
             return;
         }
 
-        if (!this._authorPmids?.length && !this._authorAllPapers?.length) {
+        if (!this._authorAllPapers?.length) {
             status.textContent = 'No papers loaded to save.';
             status.className = 'profile-status profile-status-error';
             status.style.display = '';
@@ -2226,25 +2227,45 @@ class IMPACTApp {
             name: document.getElementById('author-name-input').value.trim() || slug.replace(/_/g, ' '),
             slug: slug,
             pmids: pmids,
-            created: new Date().toISOString().slice(0, 10),
-            updated: new Date().toISOString().slice(0, 10),
         };
 
-        // Download as JSON file
-        const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `${slug}.json`;
-        a.click();
-        URL.revokeObjectURL(a.href);
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+        status.style.display = 'none';
 
-        // Update the URL to the clean profile slug
-        this._authorProfileSlug = slug;
-        this._updateAuthorHash(pmids);
+        try {
+            await dataLoader.saveProfile(profile);
 
-        status.textContent = `Profile saved as ${slug}.json — upload to docs/data/profiles/ and run upload_to_r2.py to make the link permanent.`;
-        status.className = 'profile-status profile-status-ok';
-        status.style.display = '';
+            this._authorProfileSlug = slug;
+            this._updateAuthorHash(pmids);
+
+            status.innerHTML = `Profile saved! Shareable link: <a href="#author/${encodeURIComponent(slug)}" style="color:inherit;font-weight:600">#author/${slug}</a>`;
+            status.className = 'profile-status profile-status-ok';
+            status.style.display = '';
+        } catch (e) {
+            // Fall back to file download if Worker is unavailable
+            if (e.message.includes('not available in dev') || e.message.includes('Failed to fetch')) {
+                const blob = new Blob([JSON.stringify({ ...profile, created: new Date().toISOString().slice(0, 10), updated: new Date().toISOString().slice(0, 10) }, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `${slug}.json`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+
+                this._authorProfileSlug = slug;
+                this._updateAuthorHash(pmids);
+
+                status.textContent = `Downloaded ${slug}.json (Worker unavailable). Upload to R2 manually with: python scripts/save_profile.py --from-json ${slug}.json --upload`;
+                status.className = 'profile-status profile-status-error';
+            } else {
+                status.textContent = `Error saving profile: ${e.message}`;
+                status.className = 'profile-status profile-status-error';
+            }
+            status.style.display = '';
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Profile';
+        }
     }
 
     async loadFromNCBIUrl() {

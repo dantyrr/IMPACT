@@ -1122,6 +1122,13 @@ tr.row-excluded td {
 .profile-status-ok { color: #27ae60; border-color: #27ae60; background: #f0fff5; }
 .profile-status-error { color: #e74c3c; border-color: #e74c3c; background: #fff5f5; }
 
+.profile-tip {
+    font-size: 0.78rem;
+    color: #888;
+    font-style: italic;
+    margin: -0.25rem 0 0.75rem;
+}
+
 /* ---- Network controls ---- */
 
 .network-selected-panel {
