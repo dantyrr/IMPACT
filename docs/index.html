@@ -356,6 +356,21 @@
 
         <div id="author-search-results" style="display:none">
             <div class="metrics-row" id="author-search-metrics"></div>
+            <div class="author-profile-row">
+                <div class="profile-save-group">
+                    <label for="author-profile-name" class="profile-label">Profile name</label>
+                    <input type="text" id="author-profile-name" class="profile-name-input" placeholder="e.g. Daniel_Tyrrell" autocomplete="off">
+                    <button id="author-save-profile-btn" class="save-profile-btn" title="Download profile JSON for upload to R2">Save Profile</button>
+                </div>
+                <div class="profile-share-group">
+                    <button id="author-share-btn" class="share-profile-btn" title="Copy a shareable link to this author profile">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M4.715 6.542 3.343 7.914a3 3 0 1 0 4.243 4.243l1.828-1.829A3 3 0 0 0 8.586 5.5L8 6.086a1 1 0 0 0-.154.199 2 2 0 0 1 .861 3.337L6.88 11.45a2 2 0 1 1-2.83-2.83l.793-.792a4 4 0 0 1-.128-1.287z"/><path d="M6.586 4.672A3 3 0 0 0 7.414 9.5l.775-.776a2 2 0 0 1-.896-3.346L9.12 3.55a2 2 0 1 1 2.83 2.83l-.793.792c.112.42.155.855.128 1.287l1.372-1.372a3 3 0 1 0-4.243-4.243z"/></svg>
+                        Copy Link
+                    </button>
+                    <span id="author-share-confirm" class="share-confirm" style="display:none">Link copied!</span>
+                </div>
+                <div id="author-profile-status" class="profile-status" style="display:none"></div>
+            </div>
 
             <div id="author-type-filters" class="type-filter-pills" style="display:none"></div>
 

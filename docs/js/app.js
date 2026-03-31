@@ -15,6 +15,7 @@ class IMPACTApp {
         this._authorTotalFound = 0;
         this._authorSort = { col: 'citations', dir: 'desc' };
         this._authorActiveTypes = null;  // null = all; Set<string> = specific types
+        this._authorProfileSlug = null;
         this.currentJournalSlug = null;
         this.currentWindow = 'timeseries';
         this._showCombined = true;
@@ -59,6 +60,7 @@ class IMPACTApp {
             this.setupInfluence();
             this.setupAboutJournalList();
             this.updateTimestamp(index.generated);
+            this._handleDeepLink();
         } catch (error) {
             console.error('Failed to initialize IMPACT:', error);
             document.getElementById('journal-list').innerHTML =
@@ -2068,6 +2070,181 @@ class IMPACTApp {
         });
         document.getElementById('author-pmid-paste-btn').addEventListener('click', () => this.loadFromPastedPMIDs());
 
+        document.getElementById('author-share-btn').addEventListener('click', () => {
+            const url = location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                const el = document.getElementById('author-share-confirm');
+                el.style.display = '';
+                setTimeout(() => el.style.display = 'none', 2500);
+            }).catch(() => {
+                prompt('Copy this link:', url);
+            });
+        });
+
+        document.getElementById('author-save-profile-btn').addEventListener('click', () => this._saveProfile());
+
+        // Auto-populate profile name from the name search input
+        document.getElementById('author-name-input').addEventListener('change', () => {
+            const nameInput = document.getElementById('author-name-input').value.trim();
+            const profileInput = document.getElementById('author-profile-name');
+            if (nameInput && !profileInput.value) {
+                profileInput.value = nameInput.replace(/\s+/g, '_');
+            }
+        });
+    }
+
+    _handleDeepLink() {
+        const hash = location.hash;
+        if (!hash.startsWith('#author/')) return;
+
+        const rest = hash.slice('#author/'.length);
+
+        // Format 1: #author/Slug (profile lookup from R2)
+        // Format 2: #author/Slug/pmids=123,456,... (inline PMIDs with label)
+        // Format 3: #author/pmids=123,456,... (inline PMIDs, no label)
+        const pmidsMatch = rest.match(/^(?:([^/]+)\/)?pmids=(.+)$/);
+
+        if (pmidsMatch) {
+            // Inline PMIDs in the URL
+            const label = pmidsMatch[1] ? decodeURIComponent(pmidsMatch[1]) : null;
+            const pmids = pmidsMatch[2].split(',').filter(Boolean);
+            if (!pmids.length) return;
+            this._loadDeepLinkPMIDs(pmids, label);
+        } else {
+            // Profile slug — fetch from R2
+            const slug = decodeURIComponent(rest.replace(/\/+$/, ''));
+            if (!slug) return;
+            this._loadProfile(slug);
+        }
+    }
+
+    async _loadProfile(slug) {
+        this.showSection('author');
+        const hint = document.getElementById('author-search-hint');
+        const results = document.getElementById('author-search-results');
+        hint.style.display = '';
+        results.style.display = 'none';
+        hint.textContent = `Loading profile "${slug}"…`;
+
+        try {
+            const profile = await dataLoader.loadProfile(slug);
+            if (!profile || !profile.pmids?.length) {
+                hint.textContent = `Profile "${slug}" not found. It may not have been created yet.`;
+                return;
+            }
+
+            const pmids = profile.pmids.map(String);
+            hint.textContent = `Found ${pmids.length} papers for ${profile.name || slug}. Fetching citation data…`;
+
+            if (profile.name) {
+                document.getElementById('author-name-input').value = profile.name;
+            }
+            document.getElementById('author-profile-name').value = slug;
+
+            const papers = await this._fetchICiteBatch(pmids);
+            if (!papers.length) {
+                hint.textContent = 'Profile loaded but no iCite data available for these papers.';
+                return;
+            }
+
+            this._authorTotalFound = pmids.length;
+            this._authorPmids = pmids;
+            this._authorProfileSlug = slug;
+            hint.style.display = 'none';
+            results.style.display = '';
+            this._renderAuthorSearchResults(papers, pmids.length);
+        } catch (e) {
+            hint.textContent = `Error loading profile: ${e.message}`;
+            console.error('Profile load error:', e);
+        }
+    }
+
+    _loadDeepLinkPMIDs(pmids, label) {
+        this.showSection('author');
+        if (label) {
+            document.getElementById('author-name-input').value = label;
+            document.getElementById('author-profile-name').value = label.replace(/\s+/g, '_');
+        }
+
+        const hint = document.getElementById('author-search-hint');
+        const results = document.getElementById('author-search-results');
+        hint.style.display = '';
+        results.style.display = 'none';
+        hint.textContent = `Loading ${pmids.length} papers from shared link…`;
+
+        this._fetchICiteBatch(pmids).then(papers => {
+            if (!papers.length) {
+                hint.textContent = 'No iCite data found for these PMIDs.';
+                return;
+            }
+            this._authorTotalFound = pmids.length;
+            this._authorPmids = pmids;
+            hint.style.display = 'none';
+            results.style.display = '';
+            this._renderAuthorSearchResults(papers, pmids.length);
+        }).catch(e => {
+            hint.textContent = `Error loading shared profile: ${e.message}`;
+        });
+    }
+
+    _updateAuthorHash(pmids, label) {
+        // If a profile slug is set, use clean URL; otherwise inline PMIDs
+        const slug = this._authorProfileSlug;
+        if (slug) {
+            history.replaceState(null, '', `#author/${encodeURIComponent(slug)}`);
+        } else {
+            const labelPart = label ? encodeURIComponent(label) + '/' : '';
+            history.replaceState(null, '', `#author/${labelPart}pmids=${pmids.join(',')}`);
+        }
+    }
+
+    _saveProfile() {
+        const nameInput = document.getElementById('author-profile-name');
+        const status = document.getElementById('author-profile-status');
+        const slug = nameInput.value.trim().replace(/\s+/g, '_');
+
+        if (!slug) {
+            status.textContent = 'Enter a profile name first.';
+            status.className = 'profile-status profile-status-error';
+            status.style.display = '';
+            return;
+        }
+
+        if (!this._authorPmids?.length && !this._authorAllPapers?.length) {
+            status.textContent = 'No papers loaded to save.';
+            status.className = 'profile-status profile-status-error';
+            status.style.display = '';
+            return;
+        }
+
+        // Use the current active (non-excluded) PMIDs
+        const pmids = (this._authorAllPapers || [])
+            .filter(p => !this._authorExcluded.has(String(p.pmid)))
+            .map(p => String(p.pmid));
+
+        const profile = {
+            name: document.getElementById('author-name-input').value.trim() || slug.replace(/_/g, ' '),
+            slug: slug,
+            pmids: pmids,
+            created: new Date().toISOString().slice(0, 10),
+            updated: new Date().toISOString().slice(0, 10),
+        };
+
+        // Download as JSON file
+        const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${slug}.json`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+
+        // Update the URL to the clean profile slug
+        this._authorProfileSlug = slug;
+        this._updateAuthorHash(pmids);
+
+        status.textContent = `Profile saved as ${slug}.json — upload to docs/data/profiles/ and run upload_to_r2.py to make the link permanent.`;
+        status.className = 'profile-status profile-status-ok';
+        status.style.display = '';
     }
 
     async loadFromNCBIUrl() {
@@ -2168,6 +2345,8 @@ class IMPACTApp {
             }
 
             this._authorTotalFound = pmids.length;
+            this._authorPmids = pmids;
+            this._updateAuthorHash(pmids);
             hint.style.display = 'none';
             results.style.display = '';
             this._renderAuthorSearchResults(papers, pmids.length);
@@ -2206,6 +2385,8 @@ class IMPACTApp {
             }
 
             this._authorTotalFound = pmids.length;
+            this._authorPmids = pmids;
+            this._updateAuthorHash(pmids);
             hint.style.display = 'none';
             results.style.display = '';
             this._renderAuthorSearchResults(papers, pmids.length);
@@ -2258,6 +2439,9 @@ class IMPACTApp {
             }
 
             this._authorTotalFound = totalFound;
+            const pmids = [...allPmids];
+            this._authorPmids = pmids;
+            this._updateAuthorHash(pmids, label);
             hint.style.display = 'none';
             results.style.display = '';
             this._renderAuthorSearchResults(papers, allPmids.size);

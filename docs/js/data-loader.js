@@ -33,6 +33,15 @@ class DataLoader {
         return this._fetch(`${this.baseUrl}/papers/${slug}.json`);
     }
 
+    async loadProfile(slug) {
+        const url = `${this.baseUrl}/profiles/${slug}.json`;
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        this.cache[url] = data;
+        return data;
+    }
+
     async _fetch(url) {
         if (this.cache[url]) return this.cache[url];
         const response = await fetch(url);
