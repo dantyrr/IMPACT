@@ -2119,7 +2119,7 @@ class IMPACTApp {
     }
 
     async _loadProfile(slug) {
-        this.showSection('author');
+        this.showSection('authors');
         const hint = document.getElementById('author-search-hint');
         const results = document.getElementById('author-search-results');
         hint.style.display = '';
@@ -2160,7 +2160,7 @@ class IMPACTApp {
     }
 
     _loadDeepLinkPMIDs(pmids, label) {
-        this.showSection('author');
+        this.showSection('authors');
         if (label) {
             document.getElementById('author-name-input').value = label;
             document.getElementById('author-profile-name').value = label.replace(/\s+/g, '_');
