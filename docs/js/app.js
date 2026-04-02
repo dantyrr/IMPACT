@@ -2538,7 +2538,7 @@ class IMPACTApp {
             ? ` <span style="font-size:.7em;color:#c0392b;font-weight:normal">(−${excluded} excluded)</span>` : '';
         const totalOnPubmed = this._authorTotalFound > this._authorAllPapers.length
             ? ` <span style="font-size:.72em;color:#888;font-weight:normal">of ${this._authorTotalFound.toLocaleString()} on PubMed</span>` : '';
-        const tipText = 'Based only on PubMed-indexed citing articles. Google Scholar casts a wider net (preprints, books, non-indexed journals), so its h-index is typically higher.';
+        const tipText = 'Based only on PubMed-indexed citing articles. Google Scholar includes articles which are not indexed on PubMed, so its h-index is typically higher.';
         document.getElementById('author-search-metrics').innerHTML = [
             [`${active.length.toLocaleString()}${excTag}${totalOnPubmed}`, 'Papers Included'],
             [totalCitations.toLocaleString(), 'Total Citations'],
