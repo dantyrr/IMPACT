@@ -19,6 +19,10 @@ alarm that fires when it silently stops working.
 - A full run took 325 minutes on 2026-08-17, past the 6-hour GitHub job ceiling.
 - The lid is normally closed, so the Mac is normally asleep. launchd does not
   wake a sleeping machine; it defers the job until the next wake.
+- The Mac is on battery on Sunday nights, so `pmset repeat wakeorpoweron` will
+  not fire: a sleeping MacBook on battery with the lid shut ignores scheduled
+  wakes. The schedule is therefore anchored to Monday morning at the office,
+  where the machine is reliably awake and on AC power.
 - Secrets already exist in `.env` and must not be duplicated.
 
 ## Architecture
@@ -55,6 +59,10 @@ working directory, no `PATH` to conda, and no `.env`.
 - Runs the update with `--days 14`. A 7-day cadence with a 10-day window leaves
   3 days of slack; one missed run becomes a permanent hole. 14 days gives a
   full week of overlap, and re-scanning known papers is cheap.
+- Decides whether it is due from the day of week, not a flat interval. A run
+  takes ~5.5h, so a Monday-morning start records success in the afternoon; a
+  flat 7-day test would miss the following Monday morning by hours and drift
+  later every week. Mondays therefore use a 5-day threshold, other days 9.
 - Uploads only when the update exits zero, so a partial run cannot publish over
   good data.
 - Appends to `logs/weekly-update-YYYY-MM-DD.log`, prunes logs older than 8 weeks.
@@ -76,7 +84,9 @@ only place they could act on it.
 
 ### launchd agents
 
-- `com.impact.weekly-update` — Sunday 22:00.
+- `com.impact.weekly-update` — Monday 08:00, 08:45, 10:00, 14:00 (the primary
+  window, around plugging in at the office), plus daily 11:00 and 16:00 as the
+  travel-week failsafe. Every one of these is a no-op unless the data is due.
 - `com.impact.freshness-check` — daily 10:00.
 
 Both keep `RunAtLoad` false. Plists are versioned in `deploy/launchd/` and
@@ -90,12 +100,15 @@ symlinked into `~/Library/LaunchAgents/`, so the schedule is reviewable in git.
 | Upload exits non-zero | wrapper checks exit code | notification; data is correct locally, retried next week |
 | Concurrent run | lock dir + pgrep | second run exits immediately, logs the reason |
 | Individual API batches fail | retry with backoff in the Python | PMIDs written to `data/failed_pmids_*.txt` |
-| Mac asleep at 22:00 | `pmset repeat wakeorpoweron` | machine wakes 5 minutes early |
+| Mac asleep at check time | launchd defers to next wake | runs when the lid opens |
+| Monday missed (travel, holiday) | 9-day fallback threshold | runs on any later day |
+| Due but on battery | `pmset -g ps` check | defers until AC, or until 12 days stale |
 | Mac off / wake failed / agent unloaded | freshness check | notification once data passes 9 days |
 | Sleep mid-run | `caffeinate -i -m -s` | prevented while the job holds the assertion |
 
-Known gap: a Mac asleep **on battery** with the lid shut will not honour the
-scheduled wake. The freshness check catches the aftermath but cannot prevent it.
+Known gap: if the Mac is never plugged in during a check window, runs defer
+until the 12-day threshold and then attempt 5.5 hours on battery, which may not
+survive to completion. The freshness check catches the aftermath.
 
 ## Testing
 

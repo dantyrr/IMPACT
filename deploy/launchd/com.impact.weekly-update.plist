@@ -6,9 +6,11 @@
     <string>com.impact.weekly-update</string>
 
     <!-- --if-due exits in milliseconds unless the data is actually stale, so
-         checking three times a day is cheap. Frequent checks beat one fixed
-         slot: this Mac is usually asleep on battery with the lid shut, and
-         launchd cannot wake it. Missed checks run at the next wake. -->
+         checking often is cheap. Monday morning is the intended slot: the
+         machine is awake and plugged in at the office. The repeated Monday
+         entries cover arriving late; the daily afternoon entries are the
+         failsafe for travel weeks and holidays, and only fire once the data
+         is 9 days old. Checks missed while asleep run at the next wake. -->
     <key>ProgramArguments</key>
     <array>
         <string>/Users/dtyrrell/Projects/IMPACT/scripts/weekly_auto_update.sh</string>
@@ -17,9 +19,14 @@
 
     <key>StartCalendarInterval</key>
     <array>
-        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
-        <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+        <!-- Monday: primary window, around plugging in at work -->
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>8</integer><key>Minute</key><integer>45</integer></dict>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+        <!-- Any day: failsafe, only acts once the data is 9 days stale -->
+        <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
     </array>
 
     <key>RunAtLoad</key>

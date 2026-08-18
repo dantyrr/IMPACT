@@ -22,9 +22,10 @@ LOG_DIR="$REPO/logs"
 LOCK_DIR="$REPO/data/.weekly_update.lock"
 STATUS="$REPO/data/last_update_status.json"
 
-DAYS=14           # lookback window; > cadence so a missed run self-heals
-DUE_DAYS=7        # consider the data stale after this many days
-FORCE_DAYS=10     # run even on battery once this stale
+DAYS=14              # lookback window; > cadence so a missed run self-heals
+DUE_DAYS_MONDAY=5    # on Mondays, run once the data is this old
+DUE_DAYS_FALLBACK=9  # any other day, only once it is this stale
+FORCE_DAYS=12        # run even on battery once this stale
 LOG_KEEP_DAYS=56
 
 IF_DUE=0
@@ -92,10 +93,21 @@ PY
 
 # ---- should we run at all? ------------------------------------------------
 AGE=$(data_age_days)
+DOW=$(date +%u)                     # 1 = Monday
 if [ "$IF_DUE" = "1" ]; then
-    if [ "$AGE" -lt "$DUE_DAYS" ]; then
+    # Monday morning is the intended slot: the machine is awake and plugged in
+    # at the office. The threshold is 5 days rather than 7 because a run takes
+    # ~5.5h, so last week's success timestamp lands in the afternoon; a flat
+    # 7-day test would just miss each Monday morning and drift later weekly.
+    if [ "$DOW" -eq 1 ] && [ "$AGE" -ge "$DUE_DAYS_MONDAY" ]; then
+        :
+    elif [ "$AGE" -ge "$DUE_DAYS_FALLBACK" ]; then
+        # Monday was missed — travelling, day off, machine never plugged in.
+        log "Monday slot missed (${AGE}d old) — running on fallback"
+    else
         exit 0                      # not due; stay silent
     fi
+
     if ! on_ac_power && [ "$AGE" -lt "$FORCE_DAYS" ]; then
         log "due (${AGE}d) but on battery — deferring"
         exit 0
