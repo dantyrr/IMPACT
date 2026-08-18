@@ -51,6 +51,79 @@ logger = logging.getLogger("weekly")
 
 
 # ------------------------------------------------------------------ #
+#  HTTP helpers
+# ------------------------------------------------------------------ #
+
+FAILED_PMIDS = {"esummary": [], "icite": []}
+
+
+def request_with_retry(url, params, timeout, attempts=6, label=""):
+    """GET with exponential backoff. Returns the response, or None if every
+    attempt failed. Transient 5xx/timeouts are the norm against NCBI at
+    volume, so a dropped batch must never be silently skipped."""
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except Exception as e:
+            if attempt == attempts:
+                logger.error(f"  FAILED after {attempt} attempts {label}: {e}")
+                return None
+            wait = min(2 ** attempt, 30)
+            logger.warning(f"  retry {attempt} {label} in {wait}s: {e}")
+            time.sleep(wait)
+    return None
+
+
+MAX_UID = 99999999
+
+
+def esearch_ids(term, retmax=9999):
+    """One ESearch. Returns (count, ids). count is the true total, which may
+    exceed len(ids) when the result set is over the 9,999 retrieval cap."""
+    params = {"db": "pubmed", "term": term, "retmax": retmax, "retmode": "xml"}
+    if PUBMED_API_KEY:
+        params["api_key"] = PUBMED_API_KEY
+    if PUBMED_EMAIL:
+        params["email"] = PUBMED_EMAIL
+
+    resp = request_with_retry(
+        f"{PUBMED_BASE_URL}/esearch.fcgi", params, timeout=60, label=term,
+    )
+    time.sleep(1.0 / PUBMED_RATE_LIMIT)
+    if resp is None:
+        return None, []
+    root = ET.fromstring(resp.text)
+    return (int(root.findtext("Count", "0")),
+            [int(el.text) for el in root.findall(".//IdList/Id")])
+
+
+def esearch_all(base_term, lo=0, hi=MAX_UID, depth=0):
+    """Retrieve every PMID for a term, bisecting on [UID] ranges to keep each
+    subquery under the 9,999 cap. PubMed enforces that cap on ESearch and on
+    EFetch-from-History alike, so partitioning the query is the only way to
+    read a day with more than 9,999 papers. UID ranges are disjoint and
+    exhaustive, so the union is complete."""
+    term = base_term if (lo == 0 and hi == MAX_UID) else f"{base_term} AND {lo}:{hi}[UID]"
+    count, ids = esearch_ids(term)
+
+    if count is None:
+        logger.error(f"  esearch failed for {term}")
+        return []
+    if count <= 9999:
+        return ids
+    if lo >= hi or depth > 30:
+        logger.warning(f"  cannot split further: {term} ({count:,}) — "
+                       f"keeping {len(ids):,}")
+        return ids
+
+    mid = (lo + hi) // 2
+    return (esearch_all(base_term, lo, mid, depth + 1)
+            + esearch_all(base_term, mid + 1, hi, depth + 1))
+
+
+# ------------------------------------------------------------------ #
 #  Phase 1: Discover new papers from PubMed
 # ------------------------------------------------------------------ #
 
@@ -66,36 +139,22 @@ def esearch_recent(days: int) -> list:
         day_str = day.strftime("%Y/%m/%d")
         term = f'"{day_str}"[EDAT]'
 
-        params = {
-            "db": "pubmed",
-            "term": term,
-            "retmax": 9999,
-            "retmode": "xml",
-        }
-        if PUBMED_API_KEY:
-            params["api_key"] = PUBMED_API_KEY
-        if PUBMED_EMAIL:
-            params["email"] = PUBMED_EMAIL
-
-        resp = requests.get(
-            f"{PUBMED_BASE_URL}/esearch.fcgi", params=params, timeout=60
-        )
-        resp.raise_for_status()
-        root = ET.fromstring(resp.text)
-
-        count = int(root.findtext("Count", "0"))
-        ids = [int(el.text) for el in root.findall(".//IdList/Id")]
-        all_pmids.update(ids)
-
-        logger.info(f"  {day_str}: {len(ids):,} PMIDs (total {count:,})")
+        count, _ = esearch_ids(term, retmax=0)
+        if count is None:
+            logger.error(f"  {day_str}: SKIPPED — esearch failed")
+            continue
 
         if count > 9999:
-            logger.warning(
-                f"  Day {day_str} has {count:,} papers (>9999) — "
-                f"some may be missed. Consider using --days with smaller range."
-            )
+            logger.info(f"  {day_str}: {count:,} papers — splitting by UID range")
+        ids = esearch_all(term)
 
-        time.sleep(1.0 / PUBMED_RATE_LIMIT)
+        all_pmids.update(ids)
+        logger.info(f"  {day_str}: {len(ids):,} PMIDs (total {count:,})")
+        if len(set(ids)) < count:
+            logger.warning(
+                f"  {day_str}: retrieved {len(set(ids)):,} of {count:,} — "
+                f"{count - len(set(ids)):,} missing"
+            )
 
     return list(all_pmids)
 
@@ -115,14 +174,18 @@ def esummary_batch(pmids: list, batch_size: int = 200) -> list:
         if PUBMED_API_KEY:
             params["api_key"] = PUBMED_API_KEY
 
+        resp = request_with_retry(
+            f"{PUBMED_BASE_URL}/esummary.fcgi", params, timeout=120,
+            label=f"esummary batch at {i}",
+        )
+        if resp is None:
+            FAILED_PMIDS["esummary"].extend(chunk)
+            continue
         try:
-            resp = requests.get(
-                f"{PUBMED_BASE_URL}/esummary.fcgi", params=params, timeout=120
-            )
-            resp.raise_for_status()
             data = resp.json()
         except Exception as e:
-            logger.error(f"  ESummary error for batch starting at {i}: {e}")
+            logger.error(f"  ESummary unparseable at {i}: {e}")
+            FAILED_PMIDS["esummary"].extend(chunk)
             continue
 
         result = data.get("result", {})
@@ -239,16 +302,20 @@ def fetch_icite_references(pmids: list, batch_size: int = 200) -> dict:
             time.sleep(min_interval - elapsed)
         last_req = time.time()
 
+        resp = request_with_retry(
+            ICITE_BASE_URL,
+            {"pmids": chunk_str, "format": "json"},
+            timeout=120,
+            label=f"icite batch at {i}",
+        )
+        if resp is None:
+            FAILED_PMIDS["icite"].extend(chunk)
+            continue
         try:
-            resp = requests.get(
-                ICITE_BASE_URL,
-                params={"pmids": chunk_str, "format": "json"},
-                timeout=120,
-            )
-            resp.raise_for_status()
             data = resp.json()
         except Exception as e:
-            logger.error(f"  iCite error for batch starting at {i}: {e}")
+            logger.error(f"  iCite unparseable at {i}: {e}")
+            FAILED_PMIDS["icite"].extend(chunk)
             continue
 
         for record in data.get("data", []):
@@ -454,6 +521,8 @@ def main():
         db.close()
         return
 
+    inserted_count = 0
+
     # Build ISSN → journal lookup from all journals in the DB
     all_journals = db.get_all_journals()
     issn_lookup = {}  # ISSN → journal dict
@@ -495,7 +564,8 @@ def main():
 
         if matched:
             db.add_papers_bulk(matched)
-            logger.info(f"  Inserted {len(matched):,} new papers into DB")
+            inserted_count = len(matched)
+            logger.info(f"  Inserted {inserted_count:,} new papers into DB")
     else:
         logger.info("  No new papers to fetch")
 
@@ -657,16 +727,31 @@ def main():
     update_index(WEBSITE_DATA_DIR, dirty_journals_data)
 
     db.close()
-    _print_summary(start_time, new_pmids, dirty_journal_ids, dirty_journals_data)
+    _print_summary(start_time, new_pmids, dirty_journal_ids,
+                   dirty_journals_data, inserted=inserted_count)
 
 
-def _print_summary(start_time, new_pmids, dirty_journal_ids, dirty_journals_data):
+def _print_summary(start_time, new_pmids, dirty_journal_ids, dirty_journals_data,
+                   inserted=None):
     elapsed = (datetime.now() - start_time).total_seconds()
     logger.info("=" * 60)
     logger.info(f"Weekly update complete in {elapsed:.0f}s ({elapsed / 60:.1f} min)")
-    logger.info(f"  New papers added:     {len(new_pmids):,}")
+    logger.info(f"  New PMIDs fetched:    {len(new_pmids):,}")
+    if inserted is not None:
+        logger.info(f"  Papers inserted:      {inserted:,}")
     logger.info(f"  Journals affected:    {len(dirty_journal_ids):,}")
     logger.info(f"  Snapshots updated:    {len(dirty_journals_data):,}")
+
+    for phase, pmids in FAILED_PMIDS.items():
+        if not pmids:
+            continue
+        out = REPO_ROOT / "data" / f"failed_pmids_{phase}.txt"
+        out.write_text("\n".join(str(x) for x in pmids) + "\n")
+        logger.warning(
+            f"  {len(pmids):,} PMIDs permanently failed in {phase} — "
+            f"written to {out}"
+        )
+
     logger.info("")
     logger.info("Next step: python scripts/upload_to_r2.py")
 
