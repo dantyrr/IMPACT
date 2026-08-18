@@ -120,22 +120,29 @@ def main():
     if not to_upload:
         logger.info("Already up to date."); return
 
+    import time
     uploaded = errors = 0
     for path, key in to_upload:
-        try:
-            client.upload_file(
-                str(path), R2_BUCKET_NAME, key,
-                ExtraArgs={
-                    "ContentType": "application/json",
-                    "CacheControl": "public, max-age=3600",
-                },
-            )
-            uploaded += 1
-            if uploaded % 50 == 0 or uploaded == len(to_upload):
-                logger.info(f"  {uploaded}/{len(to_upload)} uploaded")
-        except ClientError as e:
-            logger.error(f"  FAILED: {key} — {e}")
-            errors += 1
+        for attempt in range(1, 7):
+            try:
+                client.upload_file(
+                    str(path), R2_BUCKET_NAME, key,
+                    ExtraArgs={
+                        "ContentType": "application/json",
+                        "CacheControl": "public, max-age=3600",
+                    },
+                )
+                uploaded += 1
+                if uploaded % 50 == 0 or uploaded == len(to_upload):
+                    logger.info(f"  {uploaded}/{len(to_upload)} uploaded")
+                break
+            except Exception as e:
+                if attempt == 6:
+                    logger.error(f"  FAILED after {attempt} attempts: {key} — {e}")
+                    errors += 1
+                    break
+                logger.warning(f"  retry {attempt} for {key}: {e}")
+                time.sleep(min(2 ** attempt, 30))
 
     logger.info(f"Done: {uploaded} uploaded, {errors} errors")
     if R2_PUBLIC_URL:
