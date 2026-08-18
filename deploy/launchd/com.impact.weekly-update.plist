@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.impact.weekly-update</string>
+
+    <!-- --if-due exits in milliseconds unless the data is actually stale, so
+         checking three times a day is cheap. Frequent checks beat one fixed
+         slot: this Mac is usually asleep on battery with the lid shut, and
+         launchd cannot wake it. Missed checks run at the next wake. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/dtyrrell/Projects/IMPACT/scripts/weekly_auto_update.sh</string>
+        <string>--if-due</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>5</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/dtyrrell/Projects/IMPACT/logs/launchd-weekly-update.out</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/dtyrrell/Projects/IMPACT/logs/launchd-weekly-update.err</string>
+</dict>
+</plist>
