@@ -48,12 +48,54 @@ ARTICLE_TYPE_MAP = {
 
 ARTICLE_CATEGORIES = ('research', 'review', 'editorial', 'letter', 'guideline', 'case_report', 'other')
 
+# Case-insensitive view of the map above. The weekly update stored pub_type
+# lowercased ("journal article"), which missed the Title Case keys entirely and
+# silently classified ~1M papers as 'other'. Matching on a casefolded key makes
+# those rows classify correctly without rewriting them.
+_ARTICLE_TYPE_MAP_CI = {k.lower(): v for k, v in ARTICLE_TYPE_MAP.items()}
+
+# Priority order when PubMed reports several types for one paper. PubMed
+# usually lists "Journal Article" first even for a review, so taking the first
+# entry mislabels reviews as research; the specific type has to win.
+_REVIEW_TYPES = ('Systematic Review', 'Meta-Analysis', 'Review')
+_GUIDELINE_TYPES = ('Practice Guideline', 'Guideline', 'Consensus Development Conference')
+_NON_RESEARCH_TYPES = (
+    'Editorial', 'Editorial Comment', 'Letter', 'Comment', 'Case Reports',
+    'Published Erratum', 'Retraction of Publication', 'Expression of Concern',
+    'News', 'Biography', 'Obituary',
+)
+
 
 def classify_pub_type(pub_type: Optional[str]) -> str:
     """Map a raw PubMed pub_type string to one of our display categories."""
     if not pub_type:
         return 'research'
-    return ARTICLE_TYPE_MAP.get(pub_type.strip(), 'other')
+    return _ARTICLE_TYPE_MAP_CI.get(pub_type.strip().lower(), 'other')
+
+
+def canonical_pub_type(pub_types) -> str:
+    """Pick the most specific PubMed type from a paper's type list and return it
+    in canonical Title Case, so it matches ARTICLE_TYPE_MAP and the strings the
+    bulk pipeline writes.
+
+    Priority: review > guideline > editorial/letter/other non-research >
+    journal article. Matching is case-insensitive, so it accepts both the
+    Title Case strings from the bulk path and the lowercased ones from the
+    weekly path."""
+    if not pub_types:
+        return 'Journal Article'
+    if isinstance(pub_types, str):
+        pub_types = [pub_types]
+
+    present = {str(pt).strip().lower(): str(pt).strip() for pt in pub_types if pt}
+    for group in (_REVIEW_TYPES, _GUIDELINE_TYPES, _NON_RESEARCH_TYPES):
+        for canonical in group:
+            if canonical.lower() in present:
+                return canonical
+    if 'journal article' in present:
+        return 'Journal Article'
+    # Unknown type: preserve the original spelling for the first entry.
+    return next(iter(present.values()))
 
 
 def _month_offset(year: int, month: int, offset: int) -> Tuple[int, int]:

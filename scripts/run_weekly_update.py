@@ -40,7 +40,7 @@ from src.pipeline.config import (
     WEBSITE_DATA_DIR,
 )
 from src.pipeline.db_manager import DatabaseManager
-from src.pipeline.impact_calculator import ImpactCalculator
+from src.pipeline.impact_calculator import ImpactCalculator, canonical_pub_type
 
 logging.basicConfig(
     level=logging.INFO,
@@ -221,9 +221,11 @@ def _parse_esummary(article: dict):
     if not pub_year:
         return None
 
-    # Article type
-    pubtypes = article.get("pubtype", [])
-    pub_type = pubtypes[0].lower() if pubtypes else "journal article"
+    # Article type. PubMed lists "Journal Article" first even for reviews, so
+    # the first entry is almost never the meaningful one; canonical_pub_type
+    # picks the most specific type and returns it in the Title Case spelling
+    # that ARTICLE_TYPE_MAP and the bulk pipeline both use.
+    pub_type = canonical_pub_type(article.get("pubtype", []))
 
     # DOI
     doi = ""
@@ -245,7 +247,7 @@ def _parse_esummary(article: dict):
         "pub_month": pub_month,
         "pub_date": f"{pub_year}-{pub_month:02d}-01",
         "pub_type": pub_type,
-        "is_research": 1 if pub_type == "journal article" else 0,
+        "is_research": 1 if pub_type == "Journal Article" else 0,
         "doi": doi,
     }
 
