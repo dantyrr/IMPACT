@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IMPACT — Studying Publication Bias, Impact Factor Inflation &amp; H-Index Gaming</title>
-    <link rel="stylesheet" href="css/style.css?v=7">
+    <link rel="stylesheet" href="css/style.css?v=8">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -265,6 +265,34 @@
                     <button class="download-btn" id="composition-chart-dl-png">PNG</button>
                     <button class="download-btn" id="composition-chart-dl-jpg">JPG</button>
                     <button class="download-btn" id="composition-chart-dl-pdf">PDF</button>
+                </div>
+            </div>
+
+            <!-- Article type mix by publication year -->
+            <div id="yearly-types-wrap" style="display:none; margin-top:2rem;">
+                <h4>Article Type Mix by Year</h4>
+                <p class="section-note">
+                    Paper counts are works <strong>published</strong> in each calendar year.
+                    Rates are the average rolling citation rate observed during that year,
+                    so they describe the journal's behaviour in that year rather than the
+                    eventual fate of that year's papers.
+                </p>
+                <div id="yearly-types-checkboxes" class="checkbox-grid" style="margin-bottom:0.5rem;">
+                    <label><input type="checkbox" id="yt-show-pct" checked> Review %</label>
+                    <label><input type="checkbox" id="yt-show-rates" checked> Citation rates</label>
+                </div>
+                <div class="chart-container">
+                    <canvas id="yearly-types-chart"></canvas>
+                    <div class="download-bar" style="margin-top:0.5rem;">
+                        <span class="download-label">Download:</span>
+                        <button class="download-btn" id="yt-dl-png">PNG</button>
+                        <button class="download-btn" id="yt-dl-jpg">JPG</button>
+                        <button class="download-btn" id="yt-dl-pdf">PDF</button>
+                        <button class="download-btn" id="yt-dl-csv">CSV</button>
+                    </div>
+                </div>
+                <div class="table-scroll" style="margin-top:1rem; max-height:420px;">
+                    <table class="data-table" id="yearly-types-table"></table>
                 </div>
             </div>
 
@@ -558,6 +586,7 @@
             </div>
 
             <div class="metrics-row" id="influence-metrics"></div>
+            <p class="section-note" id="influence-caveat" style="display:none;"></p>
 
             <div class="influence-view-row" id="influence-view-row">
                 <label>
@@ -707,10 +736,10 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <script src="js/data-loader.js?v=6"></script>
-<script src="js/chart-manager.js?v=5"></script>
+<script src="js/chart-manager.js?v=6"></script>
 <script src="js/ui-helpers.js?v=3"></script>
 <script src="js/journal-picker.js?v=3"></script>
-<script src="js/app.js?v=35"></script>
+<script src="js/app.js?v=36"></script>
 
 </body>
 </html>

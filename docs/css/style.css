@@ -1488,3 +1488,23 @@ tr.row-excluded td {
         align-items: flex-start;
     }
 }
+
+/* ---- Article type mix by year ---- */
+.section-note {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin: 0.25rem 0 0.75rem;
+    max-width: 70ch;
+    line-height: 1.5;
+}
+
+.yt-partial {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.05rem 0.35rem;
+    border-radius: 3px;
+    background: var(--border, #ddd);
+    color: var(--text-light);
+    vertical-align: middle;
+}

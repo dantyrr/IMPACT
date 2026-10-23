@@ -441,6 +441,155 @@ class IMPACTApp {
         URL.revokeObjectURL(url);
     }
 
+    /**
+     * Per-calendar-year article type mix for one journal.
+     *
+     * Two different things are aggregated here and they must not be confused:
+     *   - Paper counts come from pub_by_type, which is papers PUBLISHED in that
+     *     month. Summed over a year, that is the year's actual output.
+     *   - Rates come from by_type, which is a rolling window. Averaging the
+     *     monthly rates across a year gives "the typical rate seen during that
+     *     year", not a rate computed over that year's papers alone.
+     *
+     * Years before the journal published anything are dropped, and the current
+     * year is flagged partial since it is still accumulating.
+     */
+    _computeYearlyTypeStats(data) {
+        const ts = data.timeseries || [];
+        if (!ts.length) return [];
+
+        const OTHER_KEYS = ['editorial', 'letter', 'other', 'guideline', 'case_report'];
+        const byYear = new Map();
+
+        for (const entry of ts) {
+            const year = parseInt(entry.month.slice(0, 4), 10);
+            if (!byYear.has(year)) {
+                byYear.set(year, {
+                    year, researchPapers: 0, reviewPapers: 0, otherPapers: 0,
+                    resRateSum: 0, resRateN: 0, revRateSum: 0, revRateN: 0, months: 0,
+                });
+            }
+            const y = byYear.get(year);
+            y.months++;
+
+            const pbt = entry.pub_by_type || {};
+            y.researchPapers += pbt.research || 0;
+            y.reviewPapers += pbt.review || 0;
+            for (const k of OTHER_KEYS) y.otherPapers += pbt[k] || 0;
+
+            const bt = entry.by_type || {};
+            if (bt.research && bt.research.papers > 0) {
+                y.resRateSum += bt.research.citations / bt.research.papers;
+                y.resRateN++;
+            }
+            if (bt.review && bt.review.papers > 0) {
+                y.revRateSum += bt.review.citations / bt.review.papers;
+                y.revRateN++;
+            }
+        }
+
+        const thisYear = new Date().getFullYear();
+        const rows = [...byYear.values()]
+            .sort((a, b) => a.year - b.year)
+            .map(y => {
+                const total = y.researchPapers + y.reviewPapers + y.otherPapers;
+                return {
+                    year: y.year,
+                    researchPapers: y.researchPapers,
+                    reviewPapers: y.reviewPapers,
+                    otherPapers: y.otherPapers,
+                    totalPapers: total,
+                    reviewPct: total > 0 ? (y.reviewPapers / total * 100) : null,
+                    researchRate: y.resRateN > 0 ? y.resRateSum / y.resRateN : null,
+                    reviewRate: y.revRateN > 0 ? y.revRateSum / y.revRateN : null,
+                    partial: y.year >= thisYear || y.months < 12,
+                };
+            });
+
+        // Trim leading years with no output at all.
+        const firstReal = rows.findIndex(r => r.totalPapers > 0);
+        return firstReal >= 0 ? rows.slice(firstReal) : [];
+    }
+
+    _renderYearlyTypes(data) {
+        const wrap = document.getElementById('yearly-types-wrap');
+        const tableEl = document.getElementById('yearly-types-table');
+        if (!wrap || !tableEl) return;
+
+        const rows = this._computeYearlyTypeStats(data);
+        this._yearlyTypeRows = rows;
+
+        if (!rows.length) {
+            wrap.style.display = 'none';
+            return;
+        }
+        wrap.style.display = '';
+
+        const show = {
+            pct: document.getElementById('yt-show-pct')?.checked !== false,
+            rates: document.getElementById('yt-show-rates')?.checked !== false,
+        };
+        chartManager.createYearlyTypeChart('yearly-types-chart', rows, {
+            show,
+            title: `${data.journal} — Article Type Mix by Year`,
+        });
+
+        const fmtPct = v => v == null ? '—' : `${v.toFixed(1)}%`;
+        const fmtRate = v => v == null ? '—' : v.toFixed(2);
+        const header = ['Year', 'Research Rate', 'Review Rate', 'Research Papers',
+                        'Review Papers', 'Other', 'Total', 'Review %'];
+
+        tableEl.innerHTML =
+            `<thead><tr>${header.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>` +
+            rows.slice().reverse().map(r => {
+                const yearCell = r.partial
+                    ? `${r.year} <span class="yt-partial" title="Year still in progress — counts are incomplete">partial</span>`
+                    : r.year;
+                return `<tr>
+                    <td>${yearCell}</td>
+                    <td>${fmtRate(r.researchRate)}</td>
+                    <td>${fmtRate(r.reviewRate)}</td>
+                    <td>${r.researchPapers.toLocaleString()}</td>
+                    <td>${r.reviewPapers.toLocaleString()}</td>
+                    <td>${r.otherPapers.toLocaleString()}</td>
+                    <td>${r.totalPapers.toLocaleString()}</td>
+                    <td>${fmtPct(r.reviewPct)}</td>
+                </tr>`;
+            }).join('') + '</tbody>';
+
+        ['yt-show-pct', 'yt-show-rates'].forEach(id => {
+            const cb = document.getElementById(id);
+            if (cb) cb.onchange = () => this._renderYearlyTypes(data);
+        });
+        const csvBtn = document.getElementById('yt-dl-csv');
+        if (csvBtn) csvBtn.onclick = () => this._downloadYearlyTypesCSV(data);
+        ['png', 'jpg', 'pdf'].forEach(fmt => {
+            const btn = document.getElementById(`yt-dl-${fmt}`);
+            if (btn) btn.onclick = () => this._downloadCompareChart(fmt, 'yearly-types-chart', 'yearly-article-types');
+        });
+    }
+
+    _downloadYearlyTypesCSV(data) {
+        const rows = this._yearlyTypeRows || [];
+        const header = ['year', 'research_rate', 'review_rate', 'research_papers',
+                        'review_papers', 'other_papers', 'total_papers', 'review_pct', 'partial_year'];
+        const lines = [header.join(',')].concat(rows.map(r => [
+            r.year,
+            r.researchRate == null ? '' : r.researchRate.toFixed(4),
+            r.reviewRate == null ? '' : r.reviewRate.toFixed(4),
+            r.researchPapers, r.reviewPapers, r.otherPapers, r.totalPapers,
+            r.reviewPct == null ? '' : r.reviewPct.toFixed(2),
+            r.partial ? 'yes' : 'no',
+        ].join(',')));
+        const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${data.slug}-article-types-by-year.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
     _renderJcMetrics(journalsData) {
         const container = document.getElementById('jc-metrics-container');
         if (!container) return;
@@ -640,6 +789,7 @@ class IMPACTApp {
             const detailScaleOverrides = this._buildScaleOverrides(this.detailXMin, this.detailXMax, this.detailYMin, this.detailYMax);
             chartManager.createMultiSeriesChart('journal-chart', series, this._journalYZero, detailScaleOverrides);
             chartManager.createCompositionChart('composition-chart', ts, this._getCompositionVisibleTypes(), detailScaleOverrides, this._getCompositionBinSize());
+            this._renderYearlyTypes(data);
             document.getElementById('detail-range-controls').style.display = '';
 
             // Show composition type checkboxes
@@ -1721,6 +1871,74 @@ class IMPACTApp {
         });
     }
 
+    /**
+     * Benchmark a paper against the journal's own typical paper.
+     *
+     * The rolling IF is a mean over a specific window, so the fair comparison
+     * is the paper's citations inside that same window against the journal's
+     * citations-per-paper for the SAME article type over the same window.
+     * Type matters: in ATVB reviews average ~8.9 against research's ~5.1, so
+     * judging a research paper against the pooled rate marks it down for not
+     * being a review.
+     *
+     * Returns null when the type cannot be established, rather than silently
+     * falling back to a benchmark that flatters or punishes.
+     */
+    _computePaperBenchmark(ts, seed, citingPapers, localCyMap, windowKey, papersData) {
+        const windowParams = {
+            'timeseries':      { pw: 24, skip: 0 },
+            'timeseries_12mo': { pw: 12, skip: 0 },
+            'timeseries_5yr':  { pw: 60, skip: 12 },
+        };
+        const { pw, skip } = windowParams[windowKey] || windowParams['timeseries'];
+
+        // Article type: prefer our own record, fall back to iCite's boolean.
+        let typeKey = null, typeSource = null;
+        const rec = papersData?.papers?.find(p => String(p.pmid) === String(seed.pmid));
+        if (rec?.pt) {
+            const t = String(rec.pt).toLowerCase();
+            if (t.includes('review') || t.includes('meta-analysis')) typeKey = 'review';
+            else if (t.includes('editorial')) typeKey = 'editorial';
+            else if (t.includes('letter') || t.includes('comment')) typeKey = 'letter';
+            else if (t.includes('journal article') || t.includes('trial')) typeKey = 'research';
+            typeSource = 'local';
+        }
+        if (!typeKey) {
+            const isRes = seed.is_research_article === true || seed.is_research_article === 'Yes';
+            if (isRes) { typeKey = 'research'; typeSource = 'icite'; }
+        }
+        if (!typeKey) return null;
+
+        const counts = this._computeSeedCitCount(ts, seed, citingPapers, localCyMap, windowKey);
+        const sOrd = (seed.year || 0) * 12 + 6;
+
+        let paperSum = 0, journalSum = 0, n = 0;
+        ts.forEach((point, i) => {
+            const [y, m] = point.month.split('-').map(Number);
+            const endOrd = y * 12 + m;
+            const startOrd = endOrd - 11;
+            const paperWindowEnd = startOrd - 1 - skip;
+            const paperWindowStart = paperWindowEnd - pw + 1;
+            if (sOrd < paperWindowStart || sOrd > paperWindowEnd) return;
+
+            const bt = point.by_type && point.by_type[typeKey];
+            if (!bt || !bt.papers) return;
+            paperSum += counts[i] || 0;
+            journalSum += bt.citations / bt.papers;
+            n++;
+        });
+
+        if (!n || journalSum <= 0) return null;
+        const paperAvg = paperSum / n;
+        const journalAvg = journalSum / n;
+        return {
+            typeKey, typeSource, months: n,
+            paperAvg, journalAvg,
+            ratio: journalAvg > 0 ? paperAvg / journalAvg : null,
+            diff: paperAvg - journalAvg,
+        };
+    }
+
     // Helper: compute raw citation count attributed to a single seed per month.
     // Returns array of numbers (one per timeseries point).
     _computeSeedCitCount(ts, seed, citingPapers, localCyMap, windowKey) {
@@ -1809,14 +2027,44 @@ class IMPACTApp {
         }, 0);
         const totalIciteCits = iciteSeeds.reduce((s, p) => s + (p.citation_count || 0), 0);
         const totalCitations = totalLocalCits + totalIciteCits;
-        const contributions = ts.map((pt, i) => Math.max(0, (pt.rolling_if || 0) - adjIf[i]));
-        const maxContrib = Math.max(...contributions);
-        const peakIdx = contributions.indexOf(maxContrib);
+        // Signed, deliberately not clamped at zero. A paper that cites below its
+        // journal's rate genuinely pulls that rate down, and clamping hid that
+        // for every below-average paper — which is most of them.
+        const contributions = ts.map((pt, i) => (pt.rolling_if || 0) - adjIf[i]);
+
+        // Which months actually have a seed inside the paper window. Testing
+        // for a non-zero contribution instead would catch floating-point noise
+        // in nearly every month, inflating the count and diluting the mean.
+        const _wp = { 'timeseries': { pw: 24, skip: 0 }, 'timeseries_12mo': { pw: 12, skip: 0 },
+                      'timeseries_5yr': { pw: 60, skip: 12 } }[windowKey]
+                    || { pw: 24, skip: 0 };
+        const seedOrds = seedsInJournal.map(sd => (sd.year || 0) * 12 + 6);
+        const inWindowIdx = [];
+        ts.forEach((point, i) => {
+            const [yy, mm] = point.month.split('-').map(Number);
+            const endOrd = yy * 12 + mm;
+            const pwEnd = endOrd - 11 - 1 - _wp.skip;
+            const pwStart = pwEnd - _wp.pw + 1;
+            if (seedOrds.some(o => o >= pwStart && o <= pwEnd)) inWindowIdx.push(i);
+        });
+        // "Peak" = largest absolute effect, keeping its sign.
+        let peakIdx = inWindowIdx.length ? inWindowIdx[0] : 0, maxContrib = 0;
+        for (const i of (inWindowIdx.length ? inWindowIdx : contributions.keys())) {
+            if (Math.abs(contributions[i]) > Math.abs(maxContrib)) {
+                maxContrib = contributions[i];
+                peakIdx = i;
+            }
+        }
         const peakMonth = ts[peakIdx]?.month || '—';
-        const meanContrib = contributions.reduce((s, v) => s + v, 0) / contributions.length;
+        // Average only over months where the paper was inside the paper window;
+        // averaging across the journal's whole history would dilute any paper
+        // toward zero and say nothing useful.
+        const meanContrib = inWindowIdx.length
+            ? inWindowIdx.reduce((a, i) => a + contributions[i], 0) / inWindowIdx.length
+            : 0;
         const dataNote = localSeeds.length > 0
             ? ` (${localSeeds.length} exact${iciteSeeds.length > 0 ? `, ${iciteSeeds.length} via iCite` : ''})`
-            : iciteSeeds.length > 0 ? ' (via iCite — rerun compute_snapshots for exact data)' : '';
+            : iciteSeeds.length > 0 ? ' (via iCite)' : '';
 
         // Format rolling window date range for a snapshot month
         const winParams = { 'timeseries': { pw: 24, skip: 0 }, 'timeseries_12mo': { pw: 12, skip: 0 }, 'timeseries_5yr': { pw: 60, skip: 12 } };
@@ -1836,15 +2084,72 @@ class IMPACTApp {
         const firstMonth = ts[0]?.month || '—';
         const lastMonth = ts[ts.length - 1]?.month || '—';
 
-        document.getElementById('influence-metrics').innerHTML = [
+        // Type-matched benchmark across the in-journal seeds.
+        const benchmarks = seedsInJournal
+            .map(sd => this._computePaperBenchmark(ts, sd, citingPapers, localCyMap, windowKey, papersData))
+            .filter(Boolean);
+        let bench = null;
+        if (benchmarks.length) {
+            const paperAvg = benchmarks.reduce((a, b) => a + b.paperAvg, 0) / benchmarks.length;
+            const journalAvg = benchmarks.reduce((a, b) => a + b.journalAvg, 0) / benchmarks.length;
+            bench = {
+                paperAvg, journalAvg,
+                ratio: journalAvg > 0 ? paperAvg / journalAvg : null,
+                typeKey: benchmarks[0].typeKey,
+                mixed: new Set(benchmarks.map(b => b.typeKey)).size > 1,
+            };
+        }
+
+        const signed = v => `${v >= 0 ? '+' : '\u2212'}${Math.abs(v).toFixed(3)}`;
+        const TYPE_LABEL = { research: 'research paper', review: 'review',
+                             editorial: 'editorial', letter: 'letter' };
+
+        const cards = [
             [totalCitations.toLocaleString() + dataNote, 'Total citations (all years, in-journal only)'],
-            [maxContrib.toFixed(3), `Peak citation rate boost` +
+            [signed(meanContrib),
+                `Net effect on journal's rate` +
+                `<br><span class="metric-sublabel">${meanContrib >= 0 ? 'Raised' : 'Lowered'} the rolling rate while in window` +
+                `${inWindowIdx.length ? `<br>${inWindowIdx.length} months in window` : ''}</span>`],
+            [signed(maxContrib),
+                `Peak effect` +
                 (peakWin ? `<br><span class="metric-sublabel">Papers: ${peakWin.papers}<br>Citations: ${peakWin.citations}</span>` : '')],
-            [meanContrib.toFixed(3), `Avg. citation rate contribution` +
-                `<br><span class="metric-sublabel">${firstMonth} to ${lastMonth}</span>`],
-        ].map(([v, l]) =>
+        ];
+
+        if (bench && bench.ratio != null) {
+            const pct = (bench.ratio - 1) * 100;
+            const verdict = Math.abs(pct) < 5 ? 'in line with'
+                : pct > 0 ? `${Math.abs(pct).toFixed(0)}% above` : `${Math.abs(pct).toFixed(0)}% below`;
+            const label = bench.mixed ? 'typical paper' : `typical ${TYPE_LABEL[bench.typeKey] || 'paper'}`;
+            cards.push([
+                `${bench.ratio.toFixed(2)}\u00d7`,
+                `vs ${label} in this journal` +
+                `<br><span class="metric-sublabel">${verdict} the ${label} bar` +
+                `<br>${bench.paperAvg.toFixed(1)} vs ${bench.journalAvg.toFixed(1)} citations per window</span>`,
+            ]);
+        }
+
+        // iCite's field-normalised view, free in the response we already have.
+        const rcrs = seedsInJournal.map(sd => sd.relative_citation_ratio).filter(v => v != null);
+        if (rcrs.length) {
+            const rcr = rcrs.reduce((a, b) => a + b, 0) / rcrs.length;
+            cards.push([rcr.toFixed(2),
+                `Relative Citation Ratio (iCite)` +
+                `<br><span class="metric-sublabel">1.0 = average NIH-funded paper<br>in the same field, any journal</span>`]);
+        }
+
+        document.getElementById('influence-metrics').innerHTML = cards.map(([v, l]) =>
             `<div class="metric-card"><span class="metric-value">${v}</span><span class="metric-label">${l}</span></div>`
         ).join('');
+
+        const caveat = document.getElementById('influence-caveat');
+        if (caveat) {
+            caveat.style.display = '';
+            caveat.innerHTML =
+                `A journal's rolling rate is a <strong>mean</strong>, and citation counts are heavily ` +
+                `right-skewed — most papers in most journals sit below their own journal's rate. ` +
+                `A negative net effect is the common case, not a failure. The ` +
+                `<em>vs typical</em> figure is the fairer read, since it holds the article type fixed.`;
+        }
 
         // Build chart datasets based on view mode
         const viewMode = document.querySelector('input[name="inf-view"]:checked')?.value || 'combined';
@@ -1871,7 +2176,7 @@ class IMPACTApp {
                 const sl = localCyMap[String(seed.pmid)] ? [seed] : [];
                 const si = localCyMap[String(seed.pmid)] ? [] : [seed];
                 const singleAdjIf = this._computeAdjIf(ts, sl, si, citingPapers, localCyMap, windowKey);
-                return ts.map((pt, i) => Math.max(0, (pt.rolling_if || 0) - singleAdjIf[i]));
+                return ts.map((pt, i) => (pt.rolling_if || 0) - singleAdjIf[i]);
             });
 
             // Build cumulative layers starting from the combined censored baseline

@@ -801,6 +801,127 @@ class ChartManager {
     }
 
     /**
+     * Yearly article-type mix for one journal.
+     *
+     * rows: [{ year, researchPapers, reviewPapers, reviewPct, researchRate, reviewRate }]
+     *
+     * Review % and citation rates live on separate axes because they are
+     * different units — a shared axis would flatten whichever has the smaller
+     * range into a straight line.
+     */
+    createYearlyTypeChart(canvasId, rows, opts = {}) {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+
+        this._destroy(canvasId);
+
+        const show = Object.assign({ pct: true, rates: true }, opts.show || {});
+        const labels = rows.map(r => String(r.year));
+        const datasets = [];
+
+        if (show.pct) {
+            datasets.push({
+                label: 'Review %',
+                data: rows.map(r => r.reviewPct),
+                borderColor: this.palette[0],
+                backgroundColor: this.palette[0],
+                borderWidth: 3,
+                tension: 0.3,
+                fill: false,
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                spanGaps: true,
+                yAxisID: 'yPct',
+            });
+        }
+        if (show.rates) {
+            datasets.push({
+                label: 'Research Rate',
+                data: rows.map(r => r.researchRate),
+                borderColor: this.palette[1],
+                backgroundColor: this.palette[1],
+                borderWidth: 2,
+                borderDash: [8, 4],
+                tension: 0.3,
+                fill: false,
+                pointRadius: 2,
+                pointHoverRadius: 5,
+                spanGaps: true,
+                yAxisID: 'yRate',
+            });
+            datasets.push({
+                label: 'Review Rate',
+                data: rows.map(r => r.reviewRate),
+                borderColor: this.palette[2],
+                backgroundColor: this.palette[2],
+                borderWidth: 2,
+                borderDash: [4, 4],
+                tension: 0.3,
+                fill: false,
+                pointRadius: 2,
+                pointHoverRadius: 5,
+                spanGaps: true,
+                yAxisID: 'yRate',
+            });
+        }
+
+        const scales = {
+            x: { title: { display: true, text: 'Publication Year' } },
+        };
+        if (show.pct) {
+            scales.yPct = {
+                position: 'left',
+                title: { display: true, text: 'Review % of papers published' },
+                beginAtZero: true,
+                ticks: { callback: v => `${v}%` },
+                ...(opts.scaleOverrides?.yPct || {}),
+            };
+        }
+        if (show.rates) {
+            scales.yRate = {
+                position: show.pct ? 'right' : 'left',
+                title: { display: true, text: 'Citations per paper' },
+                beginAtZero: true,
+                grid: { drawOnChartArea: !show.pct },
+                ...(opts.scaleOverrides?.yRate || {}),
+            };
+        }
+
+        this.charts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    title: { display: true, text: opts.title || 'Article Type Mix by Year', font: { size: 14 } },
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: (c) => {
+                                const v = c.parsed.y;
+                                if (v == null) return null;
+                                return c.dataset.label === 'Review %'
+                                    ? `${c.dataset.label}: ${v.toFixed(1)}%`
+                                    : `${c.dataset.label}: ${v.toFixed(2)}`;
+                            },
+                            afterBody: (items) => {
+                                const r = rows[items[0].dataIndex];
+                                if (!r) return '';
+                                return [
+                                    `Research papers: ${r.researchPapers.toLocaleString()}`,
+                                    `Review papers: ${r.reviewPapers.toLocaleString()}`,
+                                ];
+                            },
+                        }
+                    }
+                },
+                scales,
+            }
+        });
+    }
+
+    /**
      * Create a horizontal bar chart (for country/institution/author breakdowns).
      * labels: string[]  values: number[]
      */
