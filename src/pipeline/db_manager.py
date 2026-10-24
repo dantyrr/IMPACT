@@ -483,6 +483,13 @@ class DatabaseManager:
             result[key] = row['cnt']
         return result
 
+    def get_paper_classes_for_journal(self, journal_id: int) -> List[Dict]:
+        """pmid, doc_class, pub_type of a journal's 2003-2026 papers (classes file)."""
+        rows = self.conn.execute(
+            "SELECT pmid, doc_class, pub_type FROM papers "
+            "WHERE journal_id = ? AND pub_year BETWEEN 2003 AND 2026", (journal_id,)).fetchall()
+        return [dict(r) for r in rows]
+
     def get_papers_for_export(self, journal_id: int, limit: int = 2000) -> list:
         """Return papers for the papers browser export, sorted by citation count desc."""
         cursor = self.conn.cursor()

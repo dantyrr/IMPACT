@@ -5,11 +5,14 @@ Exports computed metrics as JSON files for the GitHub Pages website.
 
 import json
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Dict
 import logging
 
 from src.pipeline.config import WEBSITE_DATA_DIR, SNAPSHOTS_DIR
+from src.pipeline.doc_class import CITABLE
+from src.pipeline.impact_calculator import category_of
+from src.pipeline.journal_flags import encode_deltas, flags_for_timeseries
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +51,8 @@ class JSONExporter:
     def export_journal(self, slug: str, name: str, issn: str,
                        timeseries: List[Dict],
                        timeseries_12mo: List[Dict] = None,
-                       timeseries_5yr: List[Dict] = None) -> str:
+                       timeseries_5yr: List[Dict] = None,
+                       as_of: date = None) -> str:
         """
         Export a journal's full timeseries to a JSON file.
 
@@ -59,11 +63,13 @@ class JSONExporter:
             timeseries: 24-mo window monthly snapshots (default)
             timeseries_12mo: 12-mo paper window snapshots (optional)
             timeseries_5yr: 5-yr yr2-6 paper window snapshots (optional)
+            as_of: export date used to pick the settled point for flags (default today)
 
         Returns:
             Path to the exported file
         """
         latest = timeseries[-1] if timeseries else {}
+        formatted = self._format_timeseries(timeseries)
 
         data = {
             "journal": name,
@@ -79,7 +85,8 @@ class JSONExporter:
                 "review_count": latest.get("review_count", 0),
                 "citation_count": latest.get("citation_count", 0),
             },
-            "timeseries": self._format_timeseries(timeseries),
+            "flags": flags_for_timeseries(formatted, as_of or date.today()),
+            "timeseries": formatted,
         }
 
         if timeseries_12mo is not None:
@@ -113,6 +120,24 @@ class JSONExporter:
 
         logger.info(f"Exported index → {filepath} ({len(journals)} journals)")
         return filepath
+
+    def export_journal_classes(self, slug: str, rows: List[Dict]) -> str:
+        """Write classes/{slug}.json: {"v":1,"citable":[...],"noncitable":[...]}.
+
+        rows: dicts with pmid, doc_class, pub_type (db.get_paper_classes_for_journal).
+        Each list is sorted ascending and delta-encoded (first value absolute, then
+        successive differences). Category = doc_class, else derived from pub_type."""
+        citable, noncitable = [], []
+        for r in rows:
+            cat = category_of(r.get("doc_class"), r.get("pub_type"))
+            (citable if cat in CITABLE else noncitable).append(r["pmid"])
+        classes_dir = os.path.join(self.data_dir, "classes")
+        os.makedirs(classes_dir, exist_ok=True)
+        path = os.path.join(classes_dir, f"{slug}.json")
+        with open(path, "w") as f:
+            json.dump({"v": 1, "citable": encode_deltas(citable),
+                       "noncitable": encode_deltas(noncitable)}, f, separators=(",", ":"))
+        return path
 
     @staticmethod
     def _format_affiliation(row: Dict, prefix: str) -> str:

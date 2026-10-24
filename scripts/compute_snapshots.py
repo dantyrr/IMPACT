@@ -12,7 +12,7 @@ import sys
 import os
 import logging
 import argparse
-from datetime import datetime
+from datetime import date, datetime
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,6 +36,7 @@ def process_journals(journal_chunk, db_path, worker_id):
     from src.pipeline.db_manager import DatabaseManager
     from src.pipeline.impact_calculator import ImpactCalculator
     from src.pipeline.json_exporter import JSONExporter
+    from src.pipeline.journal_flags import flags_for_timeseries
 
     log = logging.getLogger(f"compute.w{worker_id}")
     db = DatabaseManager(db_path)
@@ -75,6 +76,8 @@ def process_journals(journal_chunk, db_path, worker_id):
             timeseries_5yr=window_data["5yr"],
         )
 
+        exporter.export_journal_classes(slug, db.get_paper_classes_for_journal(jid))
+
         author_rows = db.get_paper_authors_for_journal(jid)
         exporter.export_journal_authors(slug, author_rows)
 
@@ -96,6 +99,7 @@ def process_journals(journal_chunk, db_path, worker_id):
             "latest_if_no_reviews": latest["rolling_if_no_reviews"],
             "paper_count": latest["paper_count"],
             "latest_month": latest["month"],
+            "flags": flags_for_timeseries(exporter._format_timeseries(timeseries), date.today()),
         })
 
     db.close()
