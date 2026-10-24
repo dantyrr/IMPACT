@@ -110,6 +110,13 @@ def test_no_script_lets_icite_set_is_research():
                     f"{name}: {line.strip()}"
 
 
+def test_no_pubmed_bulk_readers_remain():
+    for path in list((ROOT / "src").rglob("*.py")) + list(SCRIPTS.glob("*.py")):
+        for line in path.read_text().splitlines():
+            if "pubmed_bulk" in line or "PUBMED_BULK" in line:
+                assert line.strip().startswith("#"), f"{path.name}: {line.strip()}"
+
+
 # ------------------------------------------------------------------ #
 #  End to end: main() against temp DBs
 # ------------------------------------------------------------------ #
