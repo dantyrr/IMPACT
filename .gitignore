@@ -42,3 +42,7 @@ Citations_JIF_paper/
 # Local scheduler logs and run status
 logs/
 data/last_update_status.json
+
+# Isolated worktrees and agent scratch space
+.worktrees/
+.superpowers/
