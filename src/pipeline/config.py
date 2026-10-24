@@ -242,6 +242,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 DB_PATH = os.path.join(_REPO_ROOT, "data", "impact.db")
 PMID_DATE_CACHE_PATH = os.path.join(_REPO_ROOT, "data", "pmid_dates.db")
 PUBMED_BULK_DB_PATH  = os.path.join(_REPO_ROOT, "data", "pubmed_bulk.db")
+PUBMED_FULL_DB_PATH = os.path.join(_REPO_ROOT, "data", "pubmed_full.db")
 WEBSITE_DATA_DIR = os.path.join(_REPO_ROOT, "docs", "data")
 SNAPSHOTS_DIR = os.path.join(WEBSITE_DATA_DIR, "journals")
 
@@ -253,3 +254,9 @@ PUBMED_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 
 # --- iCite API base URL ---
 ICITE_BASE_URL = "https://icite.od.nih.gov/api/pubs"
+
+
+# Some journals have e-ISSN in config but bulk DB stores ISSNLinking (print ISSN)
+ISSN_BULK_MAP = {
+    "1545-9993": "1545-9985",  # Nature Structural and Molecular Biology
+}

@@ -32,7 +32,7 @@ REPO_ROOT = Path(__file__).parent.parent
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.pipeline.config import JOURNALS, DB_PATH, PUBMED_BULK_DB_PATH
+from src.pipeline.config import JOURNALS, DB_PATH, PUBMED_BULK_DB_PATH, ISSN_BULK_MAP
 from src.pipeline.db_manager import DatabaseManager
 from src.pipeline.icite_fetcher import IciteFetcher
 from src.pipeline.pubmed_fetcher import PubMedFetcher
@@ -45,12 +45,6 @@ logging.basicConfig(
 logger = logging.getLogger("pipeline_bulk")
 
 _parse_affiliation = PubMedFetcher._parse_affiliation  # reuse existing parser
-
-# Some journals have e-ISSN in config but bulk DB stores ISSNLinking (print ISSN)
-ISSN_BULK_MAP = {
-    "1545-9993": "1545-9985",  # Nature Structural and Molecular Biology
-}
-
 
 def open_bulk_db(path: str) -> sqlite3.Connection:
     if not os.path.exists(path):
