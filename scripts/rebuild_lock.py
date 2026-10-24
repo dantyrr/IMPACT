@@ -58,25 +58,45 @@ def _holder(lock_dir):
     return pid, _read(lock_dir, "owner"), bool(pid and _pid_alive(pid))
 
 
+def _write_atomic(path, text):
+    """Write via temp file + rename so `path` is only ever absent or complete.
+
+    The weekly wrapper treats a present-but-empty pid file as a dead pid and
+    clears the lock, so a truncate-then-write window is not acceptable.
+    """
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
 def cmd_hold(lock_dir):
+    # Handlers go in before the lock exists so an early signal cannot leak it.
+    stop = threading.Event()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, lambda *_: stop.set())
+
     lock_dir.parent.mkdir(parents=True, exist_ok=True)
     try:
         lock_dir.mkdir()
     except FileExistsError:
+        # Only a pid file naming a dead process is stale. A lock with no
+        # readable pid may be a live writer between its mkdir and pid write
+        # (the wrapper treats that as held too), so refuse.
         pid, owner, alive = _holder(lock_dir)
-        if alive:
+        if pid is None or alive:
             print(f"lock held by pid {pid} (owner {owner})", file=sys.stderr)
             return 1
         print(f"clearing stale lock (pid {pid})", file=sys.stderr)
         shutil.rmtree(lock_dir, ignore_errors=True)
-        lock_dir.mkdir()
+        try:
+            lock_dir.mkdir()
+        except FileExistsError:
+            print("lost race for the lock", file=sys.stderr)
+            return 1
 
-    stop = threading.Event()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(sig, lambda *_: stop.set())
     try:
-        (lock_dir / "owner").write_text(OWNER + "\n")
-        (lock_dir / "pid").write_text(str(os.getpid()) + "\n")
+        _write_atomic(lock_dir / "owner", OWNER + "\n")
+        _write_atomic(lock_dir / "pid", str(os.getpid()) + "\n")
         print(f"holding {lock_dir} as pid {os.getpid()}", flush=True)
         while not stop.wait(1.0):
             pass

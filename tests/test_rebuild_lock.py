@@ -102,6 +102,52 @@ def test_refuses_when_held_by_live_pid(lock_dir, holders):
     assert int((lock_dir / "pid").read_text()) == p.pid  # untouched
 
 
+def test_refuses_when_lock_has_no_pid_file(lock_dir):
+    # A live writer may be between its mkdir and pid write; never wipe that.
+    lock_dir.mkdir()
+    (lock_dir / "marker").write_text("x")
+    r = run("hold", lock_dir=lock_dir)
+    assert r.returncode == 1
+    assert (lock_dir / "marker").exists() and not (lock_dir / "pid").exists()
+
+
+def test_clears_lock_with_dead_pid(lock_dir, holders):
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    lock_dir.mkdir()
+    (lock_dir / "pid").write_text(str(dead.pid))
+    p = start_hold(lock_dir, holders)
+    assert int((lock_dir / "pid").read_text()) == p.pid
+
+
+def test_pid_never_observed_empty(lock_dir, holders):
+    # Hammer the lock dir from outside while hold starts; pid must be absent or complete.
+    p = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "hold", "--lock-dir", str(lock_dir)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    holders.append(p)
+    end = time.time() + 5
+    seen = False
+    while time.time() < end and not seen:
+        try:
+            txt = (lock_dir / "pid").read_text()
+        except OSError:
+            continue
+        assert txt.strip() == str(p.pid)
+        seen = True
+    assert seen
+
+
+def test_sigterm_before_lock_leaves_nothing(lock_dir, holders):
+    p = subprocess.Popen(
+        [sys.executable, str(SCRIPT), "hold", "--lock-dir", str(lock_dir)],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    holders.append(p)
+    p.send_signal(signal.SIGTERM)  # may land at any point in startup
+    p.wait(timeout=10)
+    assert not (lock_dir.exists() and not (lock_dir / "pid").exists())
+
+
 def test_release_only_own_lock(lock_dir, holders):
     # A lock held by someone else (live pid, foreign owner) must not be signalled.
     other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
