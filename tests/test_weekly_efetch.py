@@ -374,3 +374,51 @@ def test_pipeline_bulk_author_fields_from_shared_byline(tmp_path):
     old = rows[3002]
     assert (old["first_author_name"], old["first_author_institution"],
             old["last_author_name"]) == ("Old, Name", "Old Inst", "Old, Last")
+
+
+# ------------------------------------------------------------------ #
+#  Fix round 1: no silent drops; insert + byline in one transaction
+# ------------------------------------------------------------------ #
+
+def test_pmid_missing_from_successful_response_is_failed():
+    one = ("<PubmedArticleSet>" + _article(3003, ["Journal Article"], True, "1-10", AUTH)
+           + "</PubmedArticleSet>").encode()
+    with mock.patch.object(weekly.requests, "post", return_value=_resp(one)):
+        recs = weekly.efetch_batch([3003, 3009])
+    assert [r["pmid"] for r in recs] == [3003]
+    assert weekly.FAILED_PMIDS["efetch"] == [3009]
+
+
+def test_unparsable_record_counts_as_failed():
+    nodate = _article(3005, ["Journal Article"], True, "1-10", AUTH).replace(
+        "<PubDate><Year>2026</Year><Month>Sep</Month></PubDate>", "<PubDate></PubDate>")
+    body = ("<PubmedArticleSet>" + nodate + _article(3003, ["Journal Article"], True, "1-10", AUTH)
+            + "</PubmedArticleSet>").encode()
+    with mock.patch.object(weekly.requests, "post", return_value=_resp(body)):
+        recs = weekly.efetch_batch([3003, 3005])
+    assert [r["pmid"] for r in recs] == [3003]
+    assert weekly.FAILED_PMIDS["efetch"] == [3005]
+
+
+@pytest.mark.parametrize("body", [
+    b"<eFetchResult><ERROR>Empty id list - nothing todo</ERROR></eFetchResult>",
+    b"",
+    b"<PubmedArticleSet></PubmedArticleSet>",
+])
+def test_error_or_empty_body_counts_whole_chunk(body):
+    with mock.patch.object(weekly.requests, "post", return_value=_resp(body)):
+        recs = weekly.efetch_batch([1001, 1002])
+    assert recs == []
+    assert weekly.FAILED_PMIDS["efetch"] == [1001, 1002]
+
+
+def test_byline_failure_rolls_back_paper_insert(env, monkeypatch):
+    def boom(conn, bylines):
+        conn.execute("UPDATE papers SET first_author_name = 'partial'")
+        raise RuntimeError("disk I/O error")
+    monkeypatch.setattr(weekly, "write_bylines", boom)
+    with pytest.raises(RuntimeError):
+        weekly.main()
+    for pmid in (3001, 3002, 3003, 3004):
+        assert _paper(env, pmid) is None
+    assert _paper(env, 500)["first_author_name"] is None

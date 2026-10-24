@@ -181,7 +181,9 @@ def efetch_batch(pmids: list, batch_size: int = 200) -> list:
     pubmed_xml.parse_article. Returns the record dicts plus "pub_date"
     ("YYYY-MM-01"). A batch that fails every retry, or whose XML cannot be
     parsed, adds all its pmids to FAILED_PMIDS["efetch"] and contributes no
-    records."""
+    records. A requested pmid the response does not return as a usable record
+    (missing, an <ERROR> body, or rejected by parse_article) is added to
+    FAILED_PMIDS["efetch"] too, so nothing is dropped silently."""
     papers = []
 
     for i in range(0, len(pmids), batch_size):
@@ -210,6 +212,15 @@ def efetch_batch(pmids: list, batch_size: int = 200) -> list:
             logger.error(f"  EFetch unparseable at {i}: {e}")
             FAILED_PMIDS["efetch"].extend(chunk)
             continue
+
+        requested = set(chunk)
+        batch = [rec for rec in batch if rec["pmid"] in requested]
+        returned = {rec["pmid"] for rec in batch}
+        missing = [p for p in chunk if p not in returned]
+        if missing:
+            logger.warning(f"  EFetch batch at {i}: {len(missing):,} of {len(chunk):,} "
+                           f"PMIDs not returned as usable records")
+            FAILED_PMIDS["efetch"].extend(missing)
 
         for rec in batch:
             rec["pub_date"] = f"{rec['pub_year']}-{rec['pub_month']:02d}-01"
@@ -543,19 +554,26 @@ def main():
         )
 
         if matched:
-            db.add_papers_bulk(matched)
-            inserted_count = len(matched)
-            logger.info(f"  Inserted {inserted_count:,} new papers into DB")
-
             # First/last author fields from the stored byline
             full = open_full_db(PUBMED_FULL_DB_PATH)
             try:
                 bylines = fetch_bylines(full, [p["pmid"] for p in matched])
             finally:
                 full.close()
-            write_bylines(db.conn, bylines)
-            db.conn.commit()
-            logger.info(f"  Wrote author fields for {len(bylines):,} papers")
+
+            # Papers and their author fields in one transaction: a paper row
+            # without its byline would never be revisited (it is then in
+            # existing_pmids), so a failure rolls both back.
+            try:
+                db.add_papers_bulk(matched, commit=False)
+                write_bylines(db.conn, bylines)
+                db.conn.commit()
+            except Exception:
+                db.conn.rollback()
+                raise
+            inserted_count = len(matched)
+            logger.info(f"  Inserted {inserted_count:,} new papers into DB "
+                        f"({len(bylines):,} with author fields)")
     else:
         logger.info("  No new papers to fetch")
 
