@@ -1,0 +1,130 @@
+<?xml version="1.0"?>
+<PubmedArticleSet>
+<PubmedArticle>
+  <MedlineCitation Status="MEDLINE" Owner="NLM">
+    <PMID Version="1">1001</PMID>
+    <Article PubModel="Print">
+      <Journal>
+        <ISSN IssnType="Print">1234-5678</ISSN>
+        <JournalIssue CitedMedium="Print"><PubDate><Year>2020</Year><Month>Mar</Month></PubDate></JournalIssue>
+      </Journal>
+      <ArticleTitle>Title of <i>paper</i> 1001.</ArticleTitle>
+      <Pagination><MedlinePgn>123-130</MedlinePgn></Pagination>
+      <Abstract><AbstractText>Background text.</AbstractText></Abstract>
+      <AuthorList CompleteYN="Y"><Author ValidYN="Y"><LastName>Adams</LastName><ForeName>Ann</ForeName><Initials>A</Initials><AffiliationInfo><Affiliation>Univ A, Town, USA.</Affiliation></AffiliationInfo></Author><Author ValidYN="Y"><LastName>Baker</LastName><ForeName>Bo</ForeName><Initials>B</Initials></Author></AuthorList>
+      <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
+    </Article>
+    <MedlineJournalInfo><ISSNLinking>1234-5679</ISSNLinking></MedlineJournalInfo>
+  </MedlineCitation>
+  <PubmedData><ArticleIdList><ArticleId IdType="pubmed">1001</ArticleId><ArticleId IdType="doi">10.1/a</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle>
+<PubmedArticle>
+  <MedlineCitation Status="MEDLINE" Owner="NLM">
+    <PMID Version="1">1002</PMID>
+    <Article PubModel="Print">
+      <Journal>
+        <ISSN IssnType="Print">1234-5678</ISSN>
+        <JournalIssue CitedMedium="Print"><PubDate><Year>2020</Year><Month>Mar</Month></PubDate></JournalIssue>
+      </Journal>
+      <ArticleTitle>Title of <i>paper</i> 1002.</ArticleTitle>
+      <Pagination><MedlinePgn>5</MedlinePgn></Pagination>
+      
+      <AuthorList CompleteYN="Y"><Author ValidYN="Y"><LastName>Adams</LastName><ForeName>Ann</ForeName><Initials>A</Initials><AffiliationInfo><Affiliation>Univ A, Town, USA.</Affiliation></AffiliationInfo></Author><Author ValidYN="Y"><LastName>Baker</LastName><ForeName>Bo</ForeName><Initials>B</Initials></Author></AuthorList>
+      <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
+    </Article>
+    <MedlineJournalInfo><ISSNLinking>1234-5679</ISSNLinking></MedlineJournalInfo>
+  </MedlineCitation>
+  <PubmedData><ArticleIdList><ArticleId IdType="pubmed">1002</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle>
+<PubmedArticle>
+  <MedlineCitation Status="MEDLINE" Owner="NLM">
+    <PMID Version="1">1003</PMID>
+    <Article PubModel="Print">
+      <Journal>
+        <ISSN IssnType="Print">1234-5678</ISSN>
+        <JournalIssue CitedMedium="Print"><PubDate><Year>2020</Year><Month>Mar</Month></PubDate></JournalIssue>
+      </Journal>
+      <ArticleTitle>Title of <i>paper</i> 1003.</ArticleTitle>
+      <Pagination><MedlinePgn>1801-1802</MedlinePgn></Pagination>
+      
+      <AuthorList CompleteYN="Y"><Author ValidYN="Y"><LastName>Adams</LastName><ForeName>Ann</ForeName><Initials>A</Initials><AffiliationInfo><Affiliation>Univ A, Town, USA.</Affiliation></AffiliationInfo></Author><Author ValidYN="Y"><LastName>Baker</LastName><ForeName>Bo</ForeName><Initials>B</Initials></Author></AuthorList>
+      <PublicationTypeList><PublicationType>Letter</PublicationType></PublicationTypeList>
+    </Article>
+    <MedlineJournalInfo><ISSNLinking>1234-5679</ISSNLinking></MedlineJournalInfo>
+  </MedlineCitation>
+  <PubmedData><ArticleIdList><ArticleId IdType="pubmed">1003</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle>
+<PubmedArticle>
+  <MedlineCitation Status="MEDLINE" Owner="NLM">
+    <PMID Version="1">1004</PMID>
+    <Article PubModel="Print">
+      <Journal>
+        <ISSN IssnType="Print">1234-5678</ISSN>
+        <JournalIssue CitedMedium="Print"><PubDate><Year>2020</Year><Month>Mar</Month></PubDate></JournalIssue>
+      </Journal>
+      <ArticleTitle>Title of <i>paper</i> 1004.</ArticleTitle>
+      <Pagination><MedlinePgn>e1-e40</MedlinePgn></Pagination>
+      <Abstract><AbstractText>Background text.</AbstractText></Abstract>
+      <AuthorList CompleteYN="Y"><Author ValidYN="Y"><LastName>Adams</LastName><ForeName>Ann</ForeName><Initials>A</Initials><AffiliationInfo><Affiliation>Univ A, Town, USA.</Affiliation></AffiliationInfo></Author><Author ValidYN="Y"><LastName>Baker</LastName><ForeName>Bo</ForeName><Initials>B</Initials></Author></AuthorList>
+      <PublicationTypeList><PublicationType>Review</PublicationType><PublicationType>Practice Guideline</PublicationType></PublicationTypeList>
+    </Article>
+    <MedlineJournalInfo><ISSNLinking>1234-5679</ISSNLinking></MedlineJournalInfo>
+  </MedlineCitation>
+  <PubmedData><ArticleIdList><ArticleId IdType="pubmed">1004</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle>
+<PubmedArticle>
+  <MedlineCitation Status="MEDLINE" Owner="NLM">
+    <PMID Version="1">1005</PMID>
+    <Article PubModel="Print">
+      <Journal>
+        <ISSN IssnType="Print">1234-5678</ISSN>
+        <JournalIssue CitedMedium="Print"><PubDate><Year>2020</Year><Month>Mar</Month></PubDate></JournalIssue>
+      </Journal>
+      <ArticleTitle>Title of <i>paper</i> 1005.</ArticleTitle>
+      <Pagination><MedlinePgn>e0123456</MedlinePgn></Pagination>
+      <Abstract><AbstractText>Background text.</AbstractText></Abstract>
+      <AuthorList CompleteYN="Y"><Author ValidYN="Y"><LastName>Adams</LastName><ForeName>Ann</ForeName><Initials>A</Initials><AffiliationInfo><Affiliation>Univ A, Town, USA.</Affiliation></AffiliationInfo></Author><Author ValidYN="Y"><LastName>Baker</LastName><ForeName>Bo</ForeName><Initials>B</Initials></Author></AuthorList>
+      <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
+    </Article>
+    <MedlineJournalInfo><ISSNLinking>1234-5679</ISSNLinking></MedlineJournalInfo>
+  </MedlineCitation>
+  <PubmedData><ArticleIdList><ArticleId IdType="pubmed">1005</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle>
+<PubmedArticle>
+  <MedlineCitation Status="MEDLINE" Owner="NLM">
+    <PMID Version="1">1006</PMID>
+    <Article PubModel="Print">
+      <Journal>
+        <ISSN IssnType="Print">1234-5678</ISSN>
+        <JournalIssue CitedMedium="Print"><PubDate><Year>2020</Year><Month>Mar</Month></PubDate></JournalIssue>
+      </Journal>
+      <ArticleTitle>Title of <i>paper</i> 1006.</ArticleTitle>
+      
+      <Abstract><AbstractText>Background text.</AbstractText></Abstract>
+      <AuthorList CompleteYN="Y"><Author ValidYN="Y"><LastName>Chen</LastName><ForeName>Cy</ForeName><Initials>C</Initials></Author><Author ValidYN="N"><LastName>Chne</LastName><ForeName>Cy</ForeName><Initials>C</Initials></Author><Author ValidYN="Y"><CollectiveName>Study Group</CollectiveName></Author><Author ValidYN="Y"><LastName>Diaz</LastName><ForeName>Di</ForeName><Initials>D</Initials><AffiliationInfo><Affiliation>Inst D, City.</Affiliation><Identifier Source="ROR">https://ror.org/03vek6s52</Identifier></AffiliationInfo></Author></AuthorList>
+      <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
+    </Article>
+    <MedlineJournalInfo><ISSNLinking>1234-5679</ISSNLinking></MedlineJournalInfo>
+  </MedlineCitation>
+  <PubmedData><ArticleIdList><ArticleId IdType="pubmed">1006</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle>
+<PubmedArticle>
+  <MedlineCitation Status="MEDLINE" Owner="NLM">
+    <PMID Version="1">1007</PMID>
+    <Article PubModel="Print">
+      <Journal>
+        <ISSN IssnType="Print">1234-5678</ISSN>
+        <JournalIssue CitedMedium="Print"><PubDate><Year>2020</Year><Month>Mar</Month></PubDate></JournalIssue>
+      </Journal>
+      <ArticleTitle>Title of <i>paper</i> 1007.</ArticleTitle>
+      <Pagination><MedlinePgn>1-10</MedlinePgn></Pagination>
+      <Abstract><AbstractText>Background text.</AbstractText></Abstract>
+      <AuthorList CompleteYN="Y"><Author ValidYN="Y"><LastName>Evans</LastName><ForeName>Eve</ForeName><Initials>E</Initials><AffiliationInfo><Affiliation>Dept X, Boston, MA, USA; Dept Y, Oxford, UK</Affiliation></AffiliationInfo></Author></AuthorList>
+      <PublicationTypeList><PublicationType>Journal Article</PublicationType></PublicationTypeList>
+    </Article>
+    <MedlineJournalInfo><ISSNLinking>1234-5679</ISSNLinking></MedlineJournalInfo>
+  </MedlineCitation>
+  <PubmedData><ArticleIdList><ArticleId IdType="pubmed">1007</ArticleId></ArticleIdList></PubmedData>
+</PubmedArticle>
+<DeleteCitation><PMID Version="1">999</PMID></DeleteCitation>
+</PubmedArticleSet>
