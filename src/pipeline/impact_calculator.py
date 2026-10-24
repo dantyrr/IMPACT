@@ -19,40 +19,14 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 
 from src.pipeline.db_manager import DatabaseManager
+from src.pipeline.doc_class import class_for_types
 
 logger = logging.getLogger(__name__)
 
-# Maps PubMed pub_type strings to our 5 display categories
-ARTICLE_TYPE_MAP = {
-    'Journal Article': 'research',
-    'Review': 'review',
-    'Editorial': 'editorial',
-    'Editorial Comment': 'editorial',
-    'Letter': 'letter',
-    'Comment': 'letter',
-    'Published Erratum': 'other',
-    'Retraction of Publication': 'other',
-    'Expression of Concern': 'other',
-    'News': 'other',
-    'Biography': 'other',
-    'Obituary': 'other',
-    'Practice Guideline': 'guideline',
-    'Guideline': 'guideline',
-    'Consensus Development Conference': 'guideline',
-    'Case Reports': 'case_report',
-    'Clinical Trial': 'research',
-    'Randomized Controlled Trial': 'research',
-    'Meta-Analysis': 'review',
-    'Systematic Review': 'review',
-}
-
-ARTICLE_CATEGORIES = ('research', 'review', 'editorial', 'letter', 'guideline', 'case_report', 'other')
-
-# Case-insensitive view of the map above. The weekly update stored pub_type
-# lowercased ("journal article"), which missed the Title Case keys entirely and
-# silently classified ~1M papers as 'other'. Matching on a casefolded key makes
-# those rows classify correctly without rewriting them.
-_ARTICLE_TYPE_MAP_CI = {k.lower(): v for k, v in ARTICLE_TYPE_MAP.items()}
+# Display categories. Citable ones (research, review, case_report, guideline)
+# are defined in doc_class.CITABLE.
+ARTICLE_CATEGORIES = ('research', 'review', 'case_report', 'guideline', 'commentary',
+                      'editorial', 'letter', 'erratum', 'other')
 
 # Priority order when PubMed reports several types for one paper. PubMed
 # usually lists "Journal Article" first even for a review, so taking the first
@@ -70,12 +44,12 @@ def classify_pub_type(pub_type: Optional[str]) -> str:
     """Map a raw PubMed pub_type string to one of our display categories."""
     if not pub_type:
         return 'research'
-    return _ARTICLE_TYPE_MAP_CI.get(pub_type.strip().lower(), 'other')
+    return class_for_types([pub_type])
 
 
 def canonical_pub_type(pub_types) -> str:
     """Pick the most specific PubMed type from a paper's type list and return it
-    in canonical Title Case, so it matches ARTICLE_TYPE_MAP and the strings the
+    in canonical Title Case, so it matches the doc_class groups and the strings the
     bulk pipeline writes.
 
     Priority: review > guideline > editorial/letter/other non-research >
