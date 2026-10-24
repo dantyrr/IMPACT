@@ -226,6 +226,51 @@ def test_migration_idempotent_and_index(env):
     assert [r[2] for r in idx] == ["journal_id", "pub_date", "doc_class"]
 
 
+def _index_exists(path):
+    return bool(fetch(path, "SELECT 1 FROM sqlite_master WHERE name='idx_papers_journal_date_class'"))
+
+
+def test_index_built_only_after_completed_run(env, monkeypatch):
+    make_impact(env.impact, [{"pmid": i} for i in (1, 2, 3, 4)])
+    make_full(env.full, [{"pmid": i} for i in (1, 2, 3, 4)])
+    monkeypatch.setattr(apply_mod, "BATCH_SIZE", 2)
+    free = iter([100.0, 100.0, 100.0, 10.0])  # pre-migrate, batch1, batch2, pre-index
+    monkeypatch.setattr(apply_mod, "free_gb", lambda p: next(free))
+    assert apply_mod.main([]) == 3
+    assert not _index_exists(env.impact)
+    monkeypatch.setattr(apply_mod, "free_gb", lambda p: 1000.0)
+    assert apply_mod.main([]) == 0
+    assert _index_exists(env.impact)
+
+
+def test_low_disk_before_migration_changes_nothing(env, monkeypatch):
+    make_impact(env.impact, [{"pmid": 1}])
+    make_full(env.full, [{"pmid": 1}])
+    monkeypatch.setattr(apply_mod, "free_gb", lambda p: 5.0)
+    assert apply_mod.main([]) == 3
+    assert "doc_class" not in [r[1] for r in fetch(env.impact, "PRAGMA table_info(papers)")]
+
+
+def test_all_null_affiliation_leaves_existing_fields(env):
+    make_impact(env.impact, [{"pmid": 1}])
+    make_full(env.full, [{"pmid": 1}],
+              authors=[(1, 1, "New", "Name", "N", None, None)],
+              affils=[(10, "garbage", None, None, None, None)],
+              author_affils=[(1, 1, 0, 10)])
+    assert apply_mod.main([]) == 0
+    assert fetch(env.impact, "SELECT first_author_name, first_author_institution, first_author_city, "
+                 "first_author_state, first_author_country FROM papers") == \
+        [("New, Name", "Old Inst", "Old City", "OS", "Oldland")]
+
+
+def test_dry_run_leaves_journal_mode_and_no_wal(env):
+    basic_env(env)
+    assert fetch(env.impact, "PRAGMA journal_mode")[0][0] != "wal"
+    assert apply_mod.main(["--dry-run"]) == 0
+    assert fetch(env.impact, "PRAGMA journal_mode")[0][0] != "wal"
+    assert not Path(str(env.impact) + "-wal").exists()
+
+
 def test_refuses_without_lock(env, monkeypatch):
     basic_env(env)
     monkeypatch.setattr(apply_mod, "rebuild_lock_held", lambda: False)
@@ -238,7 +283,7 @@ def test_low_disk_stops_with_work_committed(env, monkeypatch):
     make_impact(env.impact, [{"pmid": i} for i in (1, 2, 3, 4)])
     make_full(env.full, [{"pmid": i} for i in (1, 2, 3, 4)])
     monkeypatch.setattr(apply_mod, "BATCH_SIZE", 2)
-    free = iter([100.0, 10.0])
+    free = iter([100.0, 100.0, 10.0])  # pre-migrate, batch 1, batch 2
     monkeypatch.setattr(apply_mod, "free_gb", lambda p: next(free))
     assert apply_mod.main([]) == 3
     assert fetch(env.impact, "SELECT pmid, doc_class FROM papers ORDER BY pmid") == \
@@ -253,13 +298,15 @@ def test_validate_report(env, tmp_path, monkeypatch):
               {"pmid": 2, "title": "Highlight", "pub_date": "2020-01-01"},
               {"pmid": 3, "title": "A study", "pub_date": "2020-02-01", "pub_type": "Letter"},
               {"pmid": 4, "title": "Foo-Reply", "pub_date": "2020-03-01", "pub_type": "Letter"},
+              {"pmid": 6, "title": "Plain", "pub_date": "2020-04-01", "pub_type": "Letter"},
               {"pmid": 5, "title": "Other", "journal_id": 2}]
     make_impact(env.impact, papers,
                 journals=[(1, "1", "JAMA", "J", "jama"), (2, "2", "Missingless", "M", "other-j")])
     make_full(env.full, [{"pmid": 1}, {"pmid": 2, "has_abstract": 0, "page_count": 1},
                          {"pmid": 3, "pub_types": letter_only, "pub_type": "Letter"},
                          {"pmid": 4, "pub_types": letter_only, "pub_type": "Letter"},
-                         {"pmid": 5}])
+                         {"pmid": 5},
+                         {"pmid": 6, "pub_types": letter_only, "pub_type": "Letter"}])
     make_icite(env.icite, [(2, 0), (3, 1), (4, 0)])
     csv = tmp_path / "flagged.csv"
     csv.write_text("slug,name\nother-j,Other\nnot-there,Nope\n")
@@ -277,7 +324,11 @@ def test_validate_report(env, tmp_path, monkeypatch):
     assert "research -> commentary" in text
     # JAMA's research->commentary share: pmid 2 of research pmids {1,2} = 50.0%
     assert "50.0%" in text
-    # letter 3 duplicates the earlier non-letter title; letter 4 is a Reply
-    assert "Foo-Reply" in text
+    rows = {l.split("|")[1].strip(): [c.strip() for c in l.split("|")[2:-1]]
+            for l in text.splitlines() if l.startswith("| ") and l.count("|") == 6}
+    # columns: title, icite_is_research, reply_title, dup_of_earlier_non_letter
+    assert rows["3"] == ["A study", "yes", "no", "yes"]   # dup of earlier non-letter
+    assert rows["6"] == ["Plain", "", "no", "no"]         # neither signal
+    assert rows["4"] == ["Foo-Reply", "no", "yes", "no"]  # reply, not a dup
     # read-only: impact.db has no doc_class column
     assert "doc_class" not in [r[1] for r in fetch(env.impact, "PRAGMA table_info(papers)")]

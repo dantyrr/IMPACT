@@ -39,15 +39,25 @@ BATCH_SIZE = 50_000
 CHECKPOINT_EVERY = 20
 
 
-def migrate(conn) -> None:
-    """Idempotent: add doc_class / class_source and the journal+date+class index."""
+def add_columns(conn) -> None:
+    """Idempotent: add doc_class / class_source."""
     cols = {r[1] for r in conn.execute("PRAGMA table_info(papers)")}
     for col in ("doc_class", "class_source"):
         if col not in cols:
             conn.execute(f"ALTER TABLE papers ADD COLUMN {col} TEXT")
+    conn.commit()
+
+
+def create_index(conn) -> None:
+    """Idempotent. Built after the updates so they do not maintain it row by row."""
     conn.execute("CREATE INDEX IF NOT EXISTS idx_papers_journal_date_class "
                  "ON papers(journal_id, pub_date, doc_class)")
     conn.commit()
+
+
+def migrate(conn) -> None:
+    add_columns(conn)
+    create_index(conn)
 
 
 def _journal_ids(conn, slugs):
@@ -74,7 +84,7 @@ def _byline_updates(bylines):
             name, aff = ends[key]
             if name:
                 names.append((key, name, pmid))
-            if aff:
+            if aff and any(v is not None for v in aff):
                 affs.append((key, *aff, pmid))
     return names, affs
 
@@ -92,13 +102,30 @@ def main(argv=None) -> int:
                      "(start: python scripts/rebuild_lock.py hold)")
         return 1
 
-    conn = sqlite3.connect(IMPACT_DB_PATH)
-    conn.execute("PRAGMA journal_mode=WAL")
+    if args.dry_run:
+        conn = open_ro(IMPACT_DB_PATH)
+    else:
+        conn = sqlite3.connect(IMPACT_DB_PATH)
+        conn.execute("PRAGMA journal_mode=WAL")
     full = open_ro(FULL_DB_PATH)
     icite = open_ro(ICITE_DB_PATH) if os.path.exists(ICITE_DB_PATH) else None
     try:
+        floor_dir = os.path.dirname(IMPACT_DB_PATH)
+
+        def low_disk() -> bool:
+            free = free_gb(floor_dir)
+            if free < args.min_free_gb:
+                conn.commit()
+                _checkpoint(conn)
+                logger.error(f"stopping: {free:.1f} GB free (< {args.min_free_gb}); "
+                             f"re-run to resume")
+                return True
+            return False
+
         if not args.dry_run:
-            migrate(conn)
+            if low_disk():
+                return 3
+            add_columns(conn)
         where, params = "", []
         if args.journals:
             ids = _journal_ids(conn, [s.strip() for s in args.journals.split(",") if s.strip()])
@@ -146,6 +173,9 @@ def main(argv=None) -> int:
                 if n_batch % CHECKPOINT_EVERY == 0:
                     _checkpoint(conn)
         if not args.dry_run:
+            if low_disk():
+                return 3
+            create_index(conn)
             _checkpoint(conn)
         mode = "dry-run: would update" if args.dry_run else "updated"
         print(f"{mode} {matched} papers of {seen} examined; "
