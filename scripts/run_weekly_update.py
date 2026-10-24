@@ -513,7 +513,7 @@ def main():
             pmid_meta[p["pmid"]] = p
 
         # Every record goes to pubmed_full.db; bylines for the same scope as
-        # the bulk ingest (tracked ISSNs incl. aliases, 2003-2026)
+        # the bulk ingest (tracked ISSNs incl. aliases, FIRST_YEAR..last_year())
         if papers_meta:
             full = open_full_db(PUBMED_FULL_DB_PATH)
             try:

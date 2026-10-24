@@ -91,7 +91,20 @@ def test_scope_uses_issns_and_year_bounds():
     r = rec(1, [], issn="3333-3333")
     r["issns"] = ["2222-2222"]
     assert s(r) and not s(rec(1, [], issn="3333-3333"))
-    assert not make_byline_scope({TRACKED})(rec(1, [], year=2027))
+    assert not make_byline_scope({TRACKED})(rec(1, [], year=2002))
+
+
+def test_scope_default_last_year_is_next_calendar_year(monkeypatch):
+    """R27: no fixed 2026 ceiling; the default upper bound is today's year + 1."""
+    from datetime import date
+    from src.pipeline import config, pubmed_full_db
+    assert config.FIRST_YEAR == 2003
+    assert config.last_year(date(2026, 12, 1)) == 2027
+    assert config.last_year(date(2031, 1, 5)) == 2032
+    monkeypatch.setattr(pubmed_full_db, "last_year", lambda: config.last_year(date(2026, 12, 1)))
+    s = make_byline_scope({TRACKED})
+    assert s(rec(1, [], year=2027)) and s(rec(1, [], year=2003))
+    assert not s(rec(1, [], year=2028)) and not s(rec(1, [], year=2002))
 
 
 def test_separate_connections_do_not_share_cache(tmp_path, scope):

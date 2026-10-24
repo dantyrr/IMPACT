@@ -27,6 +27,8 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.pipeline.config import FIRST_YEAR, last_year  # noqa: E402
+
 REPO_ROOT      = Path(__file__).parent.parent
 REGISTRY_PATH  = REPO_ROOT / "data" / "journal_registry.json"
 PROGRESS_PATH  = REPO_ROOT / "data" / "pipeline_progress.json"
@@ -130,8 +132,8 @@ def main():
                         help="Parallel workers (default: 4)")
     parser.add_argument("--min-papers", type=int, default=100,
                         help="Skip journals with fewer papers (default: 100)")
-    parser.add_argument("--years", type=str, default="2003-2026",
-                        help="Year range (default: 2003-2026)")
+    parser.add_argument("--years", type=str, default=f"{FIRST_YEAR}-{last_year()}",
+                        help="Year range (default: FIRST_YEAR to next calendar year)")
     parser.add_argument("--resume", action="store_true",
                         help="Skip journals already in progress file")
     parser.add_argument("--dry-run", action="store_true",

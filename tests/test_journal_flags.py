@@ -141,7 +141,7 @@ def test_classes_file(db, tmp_path):
     add_paper(db, jid, 14, 2020, None, "Comment")           # NULL -> commentary
     add_paper(db, jid, 15, 2020, None, None)                # NULL, no pub_type -> research
     add_paper(db, jid, 99, 2002, "research")                # out of range
-    add_paper(db, jid, 98, 2027, "research")                # out of range
+    add_paper(db, jid, 98, date.today().year + 2, "research")  # out of range
     add_paper(db, other, 1, 2010, "research")               # other journal
     ex = JSONExporter(data_dir=str(tmp_path), journals_dir=str(tmp_path / "j"))
     path = ex.export_journal_classes("j", db.get_paper_classes_for_journal(jid))
@@ -153,6 +153,28 @@ def test_classes_file(db, tmp_path):
     assert decode_deltas(data["citable"]) == [10, 11, 13, 15, 50]
     assert decode_deltas(data["noncitable"]) == [12, 14]
     assert data["citable"] == [10, 1, 2, 2, 35]
+
+
+def test_classes_range_follows_last_year(db):
+    """R27: FIRST_YEAR .. current year + 1, no fixed ceiling."""
+    jid = db.add_journal("1111-1111", "J", slug="j")
+    nxt = date.today().year + 1
+    add_paper(db, jid, 1, 2002, "research")
+    add_paper(db, jid, 2, 2003, "research")
+    add_paper(db, jid, 3, nxt, "research")
+    add_paper(db, jid, 4, nxt + 1, "research")
+    assert sorted(r["pmid"] for r in db.get_paper_classes_for_journal(jid)) == [2, 3]
+
+
+def test_country_by_year_range_follows_last_year(db):
+    db.migrate_add_author_columns()
+    jid = db.add_journal("1111-1111", "J", slug="j")
+    nxt = date.today().year + 1
+    for pmid, year in ((1, 2002), (2, 2003), (3, nxt)):
+        add_paper(db, jid, pmid, year, "research")
+    db.conn.execute("UPDATE papers SET first_author_country = 'USA'")
+    db.conn.commit()
+    assert sorted(r["pub_year"] for r in db.get_country_by_year(jid)) == [2003, nxt]
 
 
 def test_classes_file_empty(tmp_path):

@@ -4,6 +4,8 @@ API keys, rate limits, journal definitions, and paths.
 """
 
 import os
+from datetime import date
+from typing import Optional
 
 # Optional: load from .env file if python-dotenv is installed
 try:
@@ -235,6 +237,18 @@ JOURNALS = {
         "slug": "plos-biology",
     },
 }
+
+# --- Year range ---
+# Papers before FIRST_YEAR are out of scope (needed for the 24-month window of
+# 2005 snapshots). The upper bound is never a fixed year: last_year() is the
+# current calendar year + 1, which admits papers dated into next year.
+FIRST_YEAR = 2003
+
+
+def last_year(today: Optional[date] = None) -> int:
+    """Current calendar year + 1 (``today`` overrides the clock, for tests)."""
+    return (today or date.today()).year + 1
+
 
 # --- Paths ---
 # Resolve relative to repo root

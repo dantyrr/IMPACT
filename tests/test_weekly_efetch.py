@@ -331,3 +331,46 @@ def test_icite_evidence_values():
     from src.pipeline.doc_class import icite_evidence
     assert [icite_evidence(v) for v in (True, False, 1, 0, "Yes", "No", None, "", "?")] == \
         [True, False, True, False, True, False, None, None, None]
+
+
+def test_pipeline_bulk_author_fields_from_shared_byline(tmp_path):
+    """R28: Step 5 uses the R4 byline from pubmed_full.db; no byline -> untouched."""
+    from src.pipeline.pubmed_full_db import open_full_db, store_records
+    from src.pipeline.pubmed_xml import iter_pubmed_xml
+    import io
+
+    bulk_mod = _load("run_pipeline_bulk")
+    full_path = tmp_path / "pubmed_full.db"
+    full = open_full_db(str(full_path))
+    recs = [r for k, r in iter_pubmed_xml(io.BytesIO(XML)) if k == "record"]
+    store_records(full, recs, lambda r: r["pmid"] != 3002)  # 3002: record, no byline
+    inst, city, country = full.execute(
+        "SELECT institution, city, country FROM affil_strings").fetchone()
+    full.close()
+
+    db = DatabaseManager(str(tmp_path / "impact.db"))
+    db.init_schema()
+    db.migrate_add_author_columns()
+    jid = db.add_journal("1234-5679", "J", None, "j")
+    db.add_papers_bulk([{"pmid": 3002, "journal_id": jid, "title": "P", "pub_date": "2026-09-01",
+                         "pub_year": 2026, "pub_month": 9, "pub_type": "Journal Article",
+                         "is_research": 1, "doi": None}])
+    db.conn.execute("UPDATE papers SET first_author_name='Old, Name', "
+                    "first_author_institution='Old Inst', last_author_name='Old, Last' "
+                    "WHERE pmid=3002")
+    db.conn.commit()
+    bulk = bulk_mod.open_bulk_db(str(full_path))
+    icite = mock.Mock()
+    icite.fetch_batch.return_value = {}
+    bulk_mod.process_journal("1234-5679", {"name": "J", "slug": "j"}, db, icite, bulk,
+                             2026, 2026, icite_bulk=None)
+    rows = {r["pmid"]: dict(r) for r in db.conn.execute("SELECT * FROM papers")}
+    db.close()
+    p = rows[3003]
+    assert (p["first_author_name"], p["last_author_name"]) == ("Adams, Ann", "Zed")
+    assert (p["first_author_institution"], p["first_author_city"],
+            p["first_author_country"]) == (inst, city, country)
+    assert p["last_author_institution"] is None
+    old = rows[3002]
+    assert (old["first_author_name"], old["first_author_institution"],
+            old["last_author_name"]) == ("Old, Name", "Old Inst", "Old, Last")

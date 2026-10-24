@@ -5,7 +5,8 @@ IMPACT Pipeline — Bulk DB Edition
 Like run_pipeline.py but uses data/pubmed_full.db for:
   - Paper discovery by ISSN  (replaces PubMed ESearch)
   - Paper metadata           (replaces PubMed ESummary)
-  - Author data              (replaces PubMed EFetch)
+  - Author data: the R4 byline (authors + affil_strings), same as
+    apply_pubmed_full.py and the weekly update
   - Citation month lookup    (replaces fix_citation_months)
 
 Only contacts an external API for:
@@ -34,10 +35,10 @@ REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from src.pipeline.config import JOURNALS, DB_PATH, PUBMED_FULL_DB_PATH, ISSN_BULK_MAP
+from src.pipeline.class_inputs import fetch_bylines, write_bylines
 from src.pipeline.db_manager import DatabaseManager
 from src.pipeline.doc_class import classify, icite_evidence
 from src.pipeline.icite_fetcher import IciteFetcher
-from src.pipeline.pubmed_fetcher import PubMedFetcher
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,8 +46,6 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("pipeline_bulk")
-
-_parse_affiliation = PubMedFetcher._parse_affiliation  # reuse existing parser
 
 def open_bulk_db(path: str) -> sqlite3.Connection:
     if not os.path.exists(path):
@@ -285,49 +284,14 @@ def process_journal(issn: str, meta: dict, db: DatabaseManager,
     logger.info(f"  {total_citations:,} citation events stored")
 
     # ------------------------------------------------------------------ #
-    # Step 5: Import authors from bulk DB (no API call)
+    # Step 5: First/last author fields from the pubmed_full.db byline (R4)
     # ------------------------------------------------------------------ #
-    logger.info("Step 5: Importing author data from bulk DB...")
-    author_rows = []
-    for (pmid, _, _, _,
-         first_author, first_affil,
-         last_author, last_affil,
-         *_) in rows:
-        if not first_author and not last_author:
-            # No author info — store sentinel so we don't retry endlessly
-            author_rows.append({
-                "pmid": pmid,
-                "first_author_name": "",
-                **{k: None for k in (
-                    "first_author_institution", "first_author_city",
-                    "first_author_state", "first_author_country",
-                    "last_author_name", "last_author_institution",
-                    "last_author_city", "last_author_state",
-                    "last_author_country",
-                )},
-            })
-            continue
-
-        fa = _parse_affiliation(first_affil or "")
-        la = _parse_affiliation(last_affil or "")
-        author_rows.append({
-            "pmid":                    pmid,
-            "first_author_name":       first_author,
-            "first_author_institution": fa.get("institution"),
-            "first_author_city":       fa.get("city"),
-            "first_author_state":      fa.get("state"),
-            "first_author_country":    fa.get("country"),
-            "last_author_name":        last_author,
-            "last_author_institution": la.get("institution"),
-            "last_author_city":        la.get("city"),
-            "last_author_state":       la.get("state"),
-            "last_author_country":     la.get("country"),
-        })
-
-    db.update_paper_authors_bulk(author_rows)
-    real = sum(1 for r in author_rows if r["first_author_name"])
-    logger.info(f"  {real:,} papers with author data, "
-                f"{len(author_rows) - real:,} sentinels (no PubMed authors)")
+    logger.info("Step 5: Importing author data from pubmed_full.db bylines...")
+    bylines = fetch_bylines(bulk, [p["pmid"] for p in paper_dicts])
+    write_bylines(db.conn, bylines)
+    db.commit()
+    logger.info(f"  {len(bylines):,} papers with a byline, "
+                f"{len(paper_dicts) - len(bylines):,} without (author fields left as they were)")
 
     logger.info(f"Done with {name}!")
 

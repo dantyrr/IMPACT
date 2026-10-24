@@ -6,11 +6,11 @@ insert) and referenced by integer id, which keeps the author tables compact.
 import json
 import os
 import sqlite3
-from typing import Callable
+from typing import Callable, Optional
 
 from .affil_institution import describe
 from .affil_location import parse_location, parse_locations
-from .config import ISSN_BULK_MAP
+from .config import FIRST_YEAR, ISSN_BULK_MAP, last_year
 
 _CACHE_LIMIT = 2_000_000
 
@@ -97,9 +97,19 @@ def open_full_db(path: str) -> sqlite3.Connection:
     return conn
 
 
-def make_byline_scope(tracked_issns: set, first_year: int = 2003,
-                      last_year: int = 2026) -> Callable[[dict], bool]:
+def _default_last_year() -> int:
+    # make_byline_scope's ``last_year`` parameter shadows the config helper
+    return last_year()
+
+
+def make_byline_scope(tracked_issns: set, first_year: int = FIRST_YEAR,
+                      last_year: Optional[int] = None) -> Callable[[dict], bool]:
+    """Byline scope: a tracked ISSN (issn or any of issns) and
+    first_year <= pub_year <= last_year (default config.last_year(), evaluated
+    when the scope is made)."""
     tracked = set(tracked_issns)
+    if last_year is None:
+        last_year = _default_last_year()
 
     def in_scope(rec: dict) -> bool:
         year = rec.get("pub_year")

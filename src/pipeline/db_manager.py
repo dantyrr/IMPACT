@@ -7,6 +7,8 @@ import sqlite3
 import os
 from typing import List, Dict, Optional, Tuple
 
+from src.pipeline.config import FIRST_YEAR, last_year
+
 
 def ensure_doc_class_columns(conn) -> None:
     """Add papers.doc_class / class_source to an existing DB if missing.
@@ -486,10 +488,11 @@ class DatabaseManager:
         return result
 
     def get_paper_classes_for_journal(self, journal_id: int) -> List[Dict]:
-        """pmid, doc_class, pub_type of a journal's 2003-2026 papers (classes file)."""
+        """pmid, doc_class, pub_type of a journal's FIRST_YEAR..last_year() papers (classes file)."""
         rows = self.conn.execute(
             "SELECT pmid, doc_class, pub_type FROM papers "
-            "WHERE journal_id = ? AND pub_year BETWEEN 2003 AND 2026", (journal_id,)).fetchall()
+            "WHERE journal_id = ? AND pub_year BETWEEN ? AND ?",
+            (journal_id, FIRST_YEAR, last_year())).fetchall()
         return [dict(r) for r in rows]
 
     def get_papers_for_export(self, journal_id: int, limit: int = 2000) -> list:
@@ -517,12 +520,12 @@ class DatabaseManager:
             """SELECT pub_year, first_author_country, COUNT(*) as n
                FROM papers
                WHERE journal_id = ?
-                 AND pub_year BETWEEN 2003 AND 2026
+                 AND pub_year BETWEEN ? AND ?
                  AND first_author_country IS NOT NULL
                  AND first_author_country != ''
                GROUP BY pub_year, first_author_country
                ORDER BY pub_year, n DESC""",
-            (journal_id,),
+            (journal_id, FIRST_YEAR, last_year()),
         )
         return [dict(r) for r in cursor.fetchall()]
 
