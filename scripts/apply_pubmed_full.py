@@ -27,6 +27,7 @@ if _REPO_ROOT not in sys.path:
 
 from src.pipeline.class_inputs import fetch_bylines, fetch_class_inputs, open_ro  # noqa: E402
 from src.pipeline.config import DB_PATH, ICITE_BULK_DB_PATH, PUBMED_FULL_DB_PATH  # noqa: E402
+from src.pipeline.db_manager import ensure_doc_class_columns  # noqa: E402
 from src.pipeline.doc_class import classify  # noqa: E402
 from src.pipeline.rebuild_guard import _checkpoint, free_gb, rebuild_lock_held  # noqa: E402
 
@@ -41,11 +42,7 @@ CHECKPOINT_EVERY = 20
 
 def add_columns(conn) -> None:
     """Idempotent: add doc_class / class_source."""
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(papers)")}
-    for col in ("doc_class", "class_source"):
-        if col not in cols:
-            conn.execute(f"ALTER TABLE papers ADD COLUMN {col} TEXT")
-    conn.commit()
+    ensure_doc_class_columns(conn)
 
 
 def create_index(conn) -> None:

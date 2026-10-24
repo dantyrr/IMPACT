@@ -19,7 +19,7 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
 
 from src.pipeline.db_manager import DatabaseManager
-from src.pipeline.doc_class import class_for_types
+from src.pipeline.doc_class import CITABLE, class_for_types
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,12 @@ def classify_pub_type(pub_type: Optional[str]) -> str:
     if not pub_type:
         return 'research'
     return class_for_types([pub_type])
+
+
+def category_of(doc_class: Optional[str], pub_type: Optional[str]) -> str:
+    """Display category: doc_class when set, else derived from pub_type (rows not
+    yet classified by the pubmed_full rebuild have doc_class NULL)."""
+    return doc_class if doc_class else classify_pub_type(pub_type)
 
 
 def canonical_pub_type(pub_types) -> str:
@@ -144,25 +150,27 @@ class ImpactCalculator:
         if not papers:
             return self._empty_snapshot(target_year, target_month)
 
-        # Separate research from reviews (for backward-compat rolling_if fields)
-        research_papers = [p for p in papers if p["is_research"]]
-        review_papers = [p for p in papers if not p["is_research"]]
-
-        all_pmids = [p["pmid"] for p in papers]
-        research_pmids = [p["pmid"] for p in research_papers]
+        cats = [category_of(p.get("doc_class"), p.get("pub_type")) for p in papers]
+        research_pmids = [p["pmid"] for p, c in zip(papers, cats) if c == 'research']
+        citable_pmids = [p["pmid"] for p, c in zip(papers, cats) if c in CITABLE]
 
         total_citations = self.db.count_citations_for_papers(
-            all_pmids, cite_start_date, cite_end_date
+            [p["pmid"] for p in papers], cite_start_date, cite_end_date
+        )
+        citable_citations = self.db.count_citations_for_papers(
+            citable_pmids, cite_start_date, cite_end_date
         )
         research_citations = self.db.count_citations_for_papers(
             research_pmids, cite_start_date, cite_end_date
         )
 
-        n_research = len(research_papers)
         n_all = len(papers)
-        n_reviews = len(review_papers)
+        n_research = len(research_pmids)
+        n_reviews = cats.count('review')
+        n_citable = len(citable_pmids)
+        n_inferred = sum(1 for p in papers if p.get("class_source") == 'inferred')
 
-        rolling_if = total_citations / n_research if n_research > 0 else 0.0
+        rolling_if = citable_citations / n_citable if n_citable > 0 else 0.0
         rolling_if_no_reviews = research_citations / n_research if n_research > 0 else 0.0
 
         # Per-article-type breakdown
@@ -172,7 +180,7 @@ class ImpactCalculator:
         )
         by_type = {cat: {"papers": 0, "citations": 0} for cat in ARTICLE_CATEGORIES}
         for row in raw_by_type:
-            cat = classify_pub_type(row["pub_type"])
+            cat = category_of(row.get("doc_class"), row["pub_type"])
             by_type[cat]["papers"] += row["paper_count"]
             by_type[cat]["citations"] += row["citation_count"]
 
@@ -182,7 +190,7 @@ class ImpactCalculator:
         )
         pub_by_type = {}
         for row in raw_pub:
-            cat = classify_pub_type(row["pub_type"])
+            cat = category_of(row.get("doc_class"), row["pub_type"])
             pub_by_type[cat] = pub_by_type.get(cat, 0) + row["paper_count"]
 
         return {
@@ -194,6 +202,9 @@ class ImpactCalculator:
             "review_count": n_reviews,
             "citation_count": total_citations,
             "research_citation_count": research_citations,
+            "citable_papers": n_citable,
+            "citable_citations": citable_citations,
+            "inferred_papers": n_inferred,
             "by_type": by_type,
             "pub_by_type": pub_by_type,
             "paper_window": f"{paper_start_date} to {paper_end_date}",
@@ -388,6 +399,9 @@ class ImpactCalculator:
             "review_count": 0,
             "citation_count": 0,
             "research_citation_count": 0,
+            "citable_papers": 0,
+            "citable_citations": 0,
+            "inferred_papers": 0,
             "paper_window": "",
             "citation_window": "",
         }

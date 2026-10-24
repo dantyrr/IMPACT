@@ -29,10 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("compute")
 
-OFFICIAL_JIFS = {}
 
-
-def process_journals(journal_chunk, db_path, official_jifs, worker_id):
+def process_journals(journal_chunk, db_path, worker_id):
     """Process a list of journals in a worker process. Returns index entries."""
     # Each worker opens its own DB connection
     from src.pipeline.db_manager import DatabaseManager
@@ -75,7 +73,6 @@ def process_journals(journal_chunk, db_path, official_jifs, worker_id):
             timeseries=timeseries,
             timeseries_12mo=window_data["12mo"],
             timeseries_5yr=window_data["5yr"],
-            official_if=official_jifs.get(issn),
         )
 
         author_rows = db.get_paper_authors_for_journal(jid)
@@ -97,7 +94,6 @@ def process_journals(journal_chunk, db_path, official_jifs, worker_id):
             "abbreviation": journal.get("abbreviation", ""),
             "latest_if": latest["rolling_if"],
             "latest_if_no_reviews": latest["rolling_if_no_reviews"],
-            "official_jif": official_jifs.get(issn),
             "paper_count": latest["paper_count"],
             "latest_month": latest["month"],
         })
@@ -129,7 +125,7 @@ def main():
     logger.info(f"Processing {total} journals with {args.workers} worker(s)")
 
     if args.workers == 1:
-        index_entries = process_journals(journals, DB_PATH, OFFICIAL_JIFS, 0)
+        index_entries = process_journals(journals, DB_PATH, 0)
     else:
         # Split journals across workers (interleaved so each worker gets a mix
         # of big and small journals rather than alphabetical blocks)
@@ -138,7 +134,7 @@ def main():
 
         with ProcessPoolExecutor(max_workers=args.workers) as executor:
             futures = {
-                executor.submit(process_journals, chunk, DB_PATH, OFFICIAL_JIFS, wid): wid
+                executor.submit(process_journals, chunk, DB_PATH, wid): wid
                 for wid, chunk in enumerate(chunks)
             }
             for future in as_completed(futures):

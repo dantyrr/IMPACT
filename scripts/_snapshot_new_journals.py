@@ -49,7 +49,6 @@ def process_one(slug):
         timeseries=timeseries,
         timeseries_12mo=window_data['12mo'],
         timeseries_5yr=window_data['5yr'],
-        official_if=None,
     )
 
     author_rows = db.get_paper_authors_for_journal(jid)

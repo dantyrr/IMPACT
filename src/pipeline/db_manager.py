@@ -8,6 +8,23 @@ import os
 from typing import List, Dict, Optional, Tuple
 
 
+def ensure_doc_class_columns(conn) -> None:
+    """Add papers.doc_class / class_source to an existing DB if missing.
+    A no-op when the papers table does not exist yet."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(papers)")}
+    if not cols:
+        return
+    for col in ("doc_class", "class_source"):
+        if col not in cols:
+            try:
+                conn.execute(f"ALTER TABLE papers ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError as e:
+                # another worker process added it between the check and the ALTER
+                if "duplicate column" not in str(e).lower():
+                    raise
+    conn.commit()
+
+
 class DatabaseManager:
     """Manages the SQLite database for IMPACT."""
 
@@ -19,6 +36,7 @@ class DatabaseManager:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.execute("PRAGMA busy_timeout=60000")  # wait up to 60s for locks
+        self.ensure_doc_class_columns()
 
     # ------------------------------------------------------------------ #
     #  Schema
@@ -46,7 +64,9 @@ class DatabaseManager:
                 pub_month INTEGER,
                 pub_type TEXT,
                 is_research INTEGER DEFAULT 1,
-                doi TEXT
+                doi TEXT,
+                doc_class TEXT,
+                class_source TEXT
             );
 
             CREATE TABLE IF NOT EXISTS citations (
@@ -85,6 +105,11 @@ class DatabaseManager:
         """)
 
         self.conn.commit()
+        self.ensure_doc_class_columns()
+
+    def ensure_doc_class_columns(self):
+        """Idempotent migration: add papers.doc_class / class_source if missing."""
+        ensure_doc_class_columns(self.conn)
 
     # ------------------------------------------------------------------ #
     #  Journals
@@ -247,12 +272,12 @@ class DatabaseManager:
                                             paper_start: str, paper_end: str,
                                             cite_start: str, cite_end: str) -> List[Dict]:
         """
-        Return per-pub_type paper counts and citation counts for papers published
+        Return per-(doc_class, pub_type) paper counts and citation counts for papers published
         in [paper_start, paper_end] with citations counted in [cite_start, cite_end].
         """
         cursor = self.conn.cursor()
         cursor.execute(
-            """SELECT p.pub_type,
+            """SELECT p.doc_class, p.pub_type,
                       COUNT(DISTINCT p.pmid) AS paper_count,
                       COUNT(c.id) AS citation_count
                FROM papers p
@@ -261,7 +286,7 @@ class DatabaseManager:
                    AND c.citing_date >= ? AND c.citing_date <= ?
                WHERE p.journal_id = ?
                  AND p.pub_date >= ? AND p.pub_date <= ?
-               GROUP BY p.pub_type""",
+               GROUP BY p.doc_class, p.pub_type""",
             (cite_start, cite_end, journal_id, paper_start, paper_end),
         )
         return [dict(r) for r in cursor.fetchall()]
@@ -270,15 +295,15 @@ class DatabaseManager:
                                        year: int, month: int) -> List[Dict]:
         """
         Count papers published in a specific month by pub_type.
-        Returns list of dicts with keys: pub_type, paper_count.
+        Returns list of dicts with keys: doc_class, pub_type, paper_count.
         """
         cursor = self.conn.cursor()
         cursor.execute(
-            """SELECT pub_type, COUNT(*) AS paper_count
+            """SELECT doc_class, pub_type, COUNT(*) AS paper_count
                FROM papers
                WHERE journal_id = ?
                  AND pub_year = ? AND pub_month = ?
-               GROUP BY pub_type""",
+               GROUP BY doc_class, pub_type""",
             (journal_id, year, month),
         )
         return [dict(r) for r in cursor.fetchall()]

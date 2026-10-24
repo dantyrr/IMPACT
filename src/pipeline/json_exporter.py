@@ -36,6 +36,9 @@ class JSONExporter:
                 "research": s.get("research_count", 0),
                 "reviews": s["review_count"],
                 "citations": s["citation_count"],
+                "citable_papers": s.get("citable_papers", 0),
+                "citable_citations": s.get("citable_citations", 0),
+                "inferred_papers": s.get("inferred_papers", 0),
                 "by_type": s.get("by_type", {}),
                 "pub_by_type": s.get("pub_by_type", {}),
             }
@@ -45,8 +48,7 @@ class JSONExporter:
     def export_journal(self, slug: str, name: str, issn: str,
                        timeseries: List[Dict],
                        timeseries_12mo: List[Dict] = None,
-                       timeseries_5yr: List[Dict] = None,
-                       official_if: float = None) -> str:
+                       timeseries_5yr: List[Dict] = None) -> str:
         """
         Export a journal's full timeseries to a JSON file.
 
@@ -57,7 +59,6 @@ class JSONExporter:
             timeseries: 24-mo window monthly snapshots (default)
             timeseries_12mo: 12-mo paper window snapshots (optional)
             timeseries_5yr: 5-yr yr2-6 paper window snapshots (optional)
-            official_if: Official JIF for comparison (optional)
 
         Returns:
             Path to the exported file
@@ -69,7 +70,6 @@ class JSONExporter:
             "slug": slug,
             "issn": issn,
             "last_updated": datetime.now().strftime("%Y-%m-%d"),
-            "official_jif_2024": official_if,
             "latest": {
                 "month": latest.get("month", ""),
                 "rolling_if": latest.get("rolling_if", 0),

@@ -135,7 +135,6 @@ def process_chunk(journal_chunk, db_path, start_year, end_year, worker_id):
                     "abbreviation": journal.get("abbreviation", ""),
                     "latest_if": latest.get("rolling_if", 0),
                     "latest_if_no_reviews": latest.get("rolling_if_no_reviews", 0),
-                    "official_jif": None,
                     "paper_count": latest.get("papers", 0),
                     "latest_month": latest.get("month", ""),
                 })
