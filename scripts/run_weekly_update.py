@@ -6,10 +6,13 @@ Incrementally adds papers published in the last N days and the citations
 they create, then updates affected journals' JSON snapshots.
 
 Three phases:
-  1. Discover new PubMed papers via ESearch → add to impact.db
-  2. Fetch iCite for new papers → get their reference lists → cross-reference
-     against papers already in the DB → add citation events
-  3. Recompute current month's rolling IF for affected journals → update JSONs
+  1. Discover new PubMed papers via ESearch → full records via EFetch →
+     pubmed_full.db (record + byline) → classify → add to impact.db
+  2. Fetch iCite for new papers → re-classify with iCite evidence → get their
+     reference lists → cross-reference against papers already in the DB → add
+     citation events
+  3. Recompute current month's rolling IF for affected journals → update JSONs,
+     classes files, flags and index.json
 
 Usage:
     python scripts/run_weekly_update.py              # last 10 days (default)
@@ -24,7 +27,7 @@ import json
 import time
 import logging
 import argparse
-import re
+import io
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
@@ -37,11 +40,18 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.pipeline.config import (
     DB_PATH, PUBMED_BASE_URL, PUBMED_API_KEY, PUBMED_EMAIL,
     ICITE_BASE_URL, ICITE_RATE_LIMIT, PUBMED_RATE_LIMIT,
-    WEBSITE_DATA_DIR,
+    WEBSITE_DATA_DIR, PUBMED_FULL_DB_PATH, ISSN_BULK_MAP,
 )
+from src.pipeline.class_inputs import fetch_bylines, write_bylines
 from src.pipeline.db_manager import DatabaseManager
+from src.pipeline.doc_class import classify, icite_evidence
 from src.pipeline.json_exporter import JSONExporter
-from src.pipeline.impact_calculator import ImpactCalculator, canonical_pub_type
+from src.pipeline.journal_flags import flags_for_timeseries
+from src.pipeline.impact_calculator import ImpactCalculator
+from src.pipeline.pubmed_full_db import (
+    make_byline_scope, open_full_db, store_records, tracked_issns_from_impact,
+)
+from src.pipeline.pubmed_xml import iter_pubmed_xml
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,16 +65,20 @@ logger = logging.getLogger("weekly")
 #  HTTP helpers
 # ------------------------------------------------------------------ #
 
-FAILED_PMIDS = {"esummary": [], "icite": []}
+FAILED_PMIDS = {"efetch": [], "icite": []}
 
 
-def request_with_retry(url, params, timeout, attempts=6, label=""):
-    """GET with exponential backoff. Returns the response, or None if every
-    attempt failed. Transient 5xx/timeouts are the norm against NCBI at
-    volume, so a dropped batch must never be silently skipped."""
+def request_with_retry(url, params, timeout, attempts=6, label="", method="get"):
+    """GET (or POST, with params as the form body) with exponential backoff.
+    Returns the response, or None if every attempt failed. Transient
+    5xx/timeouts are the norm against NCBI at volume, so a dropped batch must
+    never be silently skipped."""
     for attempt in range(1, attempts + 1):
         try:
-            resp = requests.get(url, params=params, timeout=timeout)
+            if method == "post":
+                resp = requests.post(url, data=params, timeout=timeout)
+            else:
+                resp = requests.get(url, params=params, timeout=timeout)
             resp.raise_for_status()
             return resp
         except Exception as e:
@@ -160,9 +174,14 @@ def esearch_recent(days: int) -> list:
     return list(all_pmids)
 
 
-def esummary_batch(pmids: list, batch_size: int = 200) -> list:
-    """Fetch PubMed ESummary for a list of PMIDs.
-    Returns list of parsed paper dicts with ISSN, title, date, type, DOI."""
+def efetch_batch(pmids: list, batch_size: int = 200) -> list:
+    """Fetch full PubMed records (EFetch, XML) for a list of PMIDs.
+
+    POSTs 200 ids per request and parses each PubmedArticle with
+    pubmed_xml.parse_article. Returns the record dicts plus "pub_date"
+    ("YYYY-MM-01"). A batch that fails every retry, or whose XML cannot be
+    parsed, adds all its pmids to FAILED_PMIDS["efetch"] and contributes no
+    records."""
     papers = []
 
     for i in range(0, len(pmids), batch_size):
@@ -170,118 +189,64 @@ def esummary_batch(pmids: list, batch_size: int = 200) -> list:
         params = {
             "db": "pubmed",
             "id": ",".join(str(p) for p in chunk),
-            "retmode": "json",
+            "retmode": "xml",
         }
         if PUBMED_API_KEY:
             params["api_key"] = PUBMED_API_KEY
+        if PUBMED_EMAIL:
+            params["email"] = PUBMED_EMAIL
 
         resp = request_with_retry(
-            f"{PUBMED_BASE_URL}/esummary.fcgi", params, timeout=120,
-            label=f"esummary batch at {i}",
+            f"{PUBMED_BASE_URL}/efetch.fcgi", params, timeout=120,
+            label=f"efetch batch at {i}", method="post",
         )
         if resp is None:
-            FAILED_PMIDS["esummary"].extend(chunk)
+            FAILED_PMIDS["efetch"].extend(chunk)
             continue
         try:
-            data = resp.json()
+            batch = [rec for kind, rec in iter_pubmed_xml(io.BytesIO(resp.content))
+                     if kind == "record"]
         except Exception as e:
-            logger.error(f"  ESummary unparseable at {i}: {e}")
-            FAILED_PMIDS["esummary"].extend(chunk)
+            logger.error(f"  EFetch unparseable at {i}: {e}")
+            FAILED_PMIDS["efetch"].extend(chunk)
             continue
 
-        result = data.get("result", {})
-        for uid in result.get("uids", []):
-            article = result.get(uid, {})
-            if not article or "error" in article:
-                continue
-            parsed = _parse_esummary(article)
-            if parsed:
-                papers.append(parsed)
+        for rec in batch:
+            rec["pub_date"] = f"{rec['pub_year']}-{rec['pub_month']:02d}-01"
+        papers.extend(batch)
 
         done = i + len(chunk)
         if done % 2000 < batch_size or done >= len(pmids):
-            logger.info(f"  ESummary: {len(papers):,} parsed ({done:,}/{len(pmids):,})")
+            logger.info(f"  EFetch: {len(papers):,} parsed ({done:,}/{len(pmids):,})")
 
         time.sleep(1.0 / PUBMED_RATE_LIMIT)
 
     return papers
 
 
-def _parse_esummary(article: dict):
-    """Parse an ESummary article into a paper dict."""
-    pmid = int(article.get("uid", 0))
-    if not pmid:
-        return None
-
-    issn = article.get("issn", "").strip()
-    essn = article.get("essn", "").strip()
-
-    # Parse publication date
-    pubdate = article.get("sortpubdate", "") or article.get("pubdate", "")
-    pub_year, pub_month = _parse_date(pubdate)
-    if not pub_year:
-        return None
-
-    # Article type. PubMed lists "Journal Article" first even for reviews, so
-    # the first entry is almost never the meaningful one; canonical_pub_type
-    # picks the most specific type and returns it in the Title Case spelling
-    # that ARTICLE_TYPE_MAP and the bulk pipeline both use.
-    pub_type = canonical_pub_type(article.get("pubtype", []))
-
-    # DOI
-    doi = ""
-    elocationid = article.get("elocationid", "")
-    if elocationid.startswith("doi:"):
-        doi = elocationid[4:].strip()
-    else:
-        for aid in article.get("articleids", []):
-            if aid.get("idtype") == "doi":
-                doi = aid.get("value", "")
-                break
-
-    return {
-        "pmid": pmid,
-        "issn": issn,
-        "essn": essn,
-        "title": article.get("title", "") or "",
-        "pub_year": pub_year,
-        "pub_month": pub_month,
-        "pub_date": f"{pub_year}-{pub_month:02d}-01",
-        "pub_type": pub_type,
-        "is_research": 1 if pub_type == "Journal Article" else 0,
-        "doi": doi,
-    }
+def class_fields(rec: dict, icite_is_research=None) -> dict:
+    """doc_class, class_source and is_research (1 iff research) for a record."""
+    cls, src = classify(rec.get("pub_types"), rec.get("has_abstract"),
+                        rec.get("page_count"), icite_is_research, rec.get("title"))
+    return {"doc_class": cls, "class_source": src,
+            "is_research": 1 if cls == "research" else 0}
 
 
-MONTHS = {
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
-}
+def build_issn_lookup(journals: list) -> dict:
+    """ISSN → journal dict, plus the ISSN_BULK_MAP aliases of tracked ISSNs."""
+    lookup = {j["issn"]: j for j in journals}
+    for issn, alias in ISSN_BULK_MAP.items():
+        if issn in lookup:
+            lookup.setdefault(alias, lookup[issn])
+    return lookup
 
 
-def _parse_date(datestr: str):
-    """Parse PubMed date string. Returns (year, month)."""
-    if not datestr:
-        return 0, 0
-
-    # sortpubdate: "2024/03/15 00:00"
-    m = re.match(r"(\d{4})/(\d{2})", datestr)
-    if m:
-        return int(m.group(1)), int(m.group(2))
-
-    # pubdate: "2024 Mar 15" or "2024 Mar"
-    m = re.match(r"(\d{4})\s+(\w{3})", datestr)
-    if m:
-        yr = int(m.group(1))
-        mo = MONTHS.get(m.group(2).lower(), 1)
-        return yr, mo
-
-    # Year only: "2024"
-    m = re.match(r"(\d{4})", datestr)
-    if m:
-        return int(m.group(1)), 1
-
-    return 0, 0
+def match_journal(rec: dict, issn_lookup: dict):
+    """The record's ISSN (ISSNLinking) first, then each Journal/ISSN."""
+    for issn in [rec.get("issn")] + list(rec.get("issns") or []):
+        if issn and issn in issn_lookup:
+            return issn_lookup[issn]
+    return None
 
 
 # ------------------------------------------------------------------ #
@@ -289,7 +254,8 @@ def _parse_date(datestr: str):
 # ------------------------------------------------------------------ #
 
 def fetch_icite_references(pmids: list, batch_size: int = 200) -> dict:
-    """Fetch iCite for PMIDs. Returns {pmid: {"references": [...], "is_research": bool}}.
+    """Fetch iCite for PMIDs.
+    Returns {pmid: {"references": [...], "icite_is_research": bool|None}}.
     Papers not yet indexed by iCite will be missing from the result."""
     results = {}
     min_interval = 1.0 / ICITE_RATE_LIMIT
@@ -337,7 +303,8 @@ def fetch_icite_references(pmids: list, batch_size: int = 200) -> dict:
 
             results[pmid] = {
                 "references": refs,
-                "is_research": bool(record.get("is_research_article")),
+                # evidence for classify() only; None when iCite gives no value
+                "icite_is_research": icite_evidence(record.get("is_research_article")),
             }
 
         done = i + len(chunk)
@@ -360,8 +327,10 @@ def format_snapshot(s: dict) -> dict:
 
 def update_journal_snapshot(db, calc, journal_id, slug, name, issn,
                             now, data_dir):
-    """Recompute current month and update the journal's JSON file.
-    Returns the raw 24-month snapshot dict, or None if no existing JSON."""
+    """Recompute current month, update the journal's JSON file (including its
+    flags) and rewrite its classes/{slug}.json.
+    Returns the raw 24-month snapshot dict plus "flags", or None if no
+    existing JSON."""
     journals_dir = os.path.join(data_dir, "journals")
     filepath = os.path.join(journals_dir, f"{slug}.json")
 
@@ -412,12 +381,17 @@ def update_journal_snapshot(db, calc, journal_id, slug, name, issn,
         "citation_count": latest["citation_count"],
     }
     existing["last_updated"] = now.strftime("%Y-%m-%d")
+    flags = flags_for_timeseries(existing["timeseries"], now.date())
+    existing["flags"] = flags
 
     os.makedirs(journals_dir, exist_ok=True)
     with open(filepath, "w") as f:
         json.dump(existing, f, indent=2)
 
-    return raw_snapshots["timeseries"]
+    exporter = JSONExporter(data_dir=data_dir, journals_dir=journals_dir)
+    exporter.export_journal_classes(slug, db.get_paper_classes_for_journal(journal_id))
+
+    return {**raw_snapshots["timeseries"], "flags": flags}
 
 
 def update_index(data_dir, dirty_journals_data):
@@ -442,6 +416,8 @@ def update_index(data_dir, dirty_journals_data):
             entry["latest_if_no_reviews"] = snapshot["rolling_if_no_reviews"]
             entry["paper_count"] = snapshot["paper_count"]
             entry["latest_month"] = snapshot["month"]
+            if "flags" in snapshot:
+                entry["flags"] = snapshot["flags"]
             updated += 1
 
     index["generated"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
@@ -518,33 +494,44 @@ def main():
 
     # Build ISSN → journal lookup from all journals in the DB
     all_journals = db.get_all_journals()
-    issn_lookup = {}  # ISSN → journal dict
-    for j in all_journals:
-        issn_lookup[j["issn"]] = j
+    issn_lookup = build_issn_lookup(all_journals)  # ISSN → journal dict
     journal_by_id = {j["id"]: j for j in all_journals}
 
     dirty_journal_ids = set()
     # Keep metadata in memory for Phase 2 (even unmatched papers cite
     # tracked papers, so we need their pub dates for citation events)
     pmid_meta = {}  # pmid → {pub_year, pub_month, ...}
+    matched = []
 
     if new_pmids:
-        logger.info(f"  Fetching ESummary for {len(new_pmids):,} papers...")
-        papers_meta = esummary_batch(new_pmids)
-        logger.info(f"  Parsed {len(papers_meta):,} papers from ESummary")
+        logger.info(f"  Fetching EFetch records for {len(new_pmids):,} papers...")
+        papers_meta = efetch_batch(new_pmids)
+        logger.info(f"  Parsed {len(papers_meta):,} papers from EFetch")
 
         # Store all metadata for Phase 2
         for p in papers_meta:
             pmid_meta[p["pmid"]] = p
 
+        # Every record goes to pubmed_full.db; bylines for the same scope as
+        # the bulk ingest (tracked ISSNs incl. aliases, 2003-2026)
+        if papers_meta:
+            full = open_full_db(PUBMED_FULL_DB_PATH)
+            try:
+                store_records(full, papers_meta,
+                              make_byline_scope(tracked_issns_from_impact(DB_PATH)))
+            finally:
+                full.close()
+            logger.info(f"  Stored {len(papers_meta):,} records in pubmed_full.db")
+
         # Match ISSN to journals and insert
-        matched = []
         unmatched_count = 0
 
         for p in papers_meta:
-            journal = issn_lookup.get(p["issn"]) or issn_lookup.get(p["essn"])
+            journal = match_journal(p, issn_lookup)
             if journal:
                 p["journal_id"] = journal["id"]
+                # iCite is not consulted yet: classified again after Phase 2
+                p.update(class_fields(p))
                 matched.append(p)
                 dirty_journal_ids.add(journal["id"])
             else:
@@ -559,6 +546,16 @@ def main():
             db.add_papers_bulk(matched)
             inserted_count = len(matched)
             logger.info(f"  Inserted {inserted_count:,} new papers into DB")
+
+            # First/last author fields from the stored byline
+            full = open_full_db(PUBMED_FULL_DB_PATH)
+            try:
+                bylines = fetch_bylines(full, [p["pmid"] for p in matched])
+            finally:
+                full.close()
+            write_bylines(db.conn, bylines)
+            db.conn.commit()
+            logger.info(f"  Wrote author fields for {len(bylines):,} papers")
     else:
         logger.info("  No new papers to fetch")
 
@@ -580,16 +577,22 @@ def main():
             f"({n_missing:,} not yet indexed — will be caught next run)"
         )
 
-        # Update is_research flag from iCite (more reliable than PubMed pubtype)
+        # Re-classify this run's papers with iCite's is_research_article as
+        # evidence; doc_class, class_source and is_research change together.
         updates = []
-        for pmid, record in icite_data.items():
-            is_res = 1 if record.get("is_research") else 0
-            updates.append((is_res, pmid))
+        for p in matched:
+            record = icite_data.get(p["pmid"])
+            if record is None or record.get("icite_is_research") is None:
+                continue
+            f = class_fields(p, record["icite_is_research"])
+            updates.append((f["doc_class"], f["class_source"], f["is_research"], p["pmid"]))
         if updates:
             db.conn.executemany(
-                "UPDATE papers SET is_research = ? WHERE pmid = ?", updates
+                "UPDATE papers SET doc_class = ?, class_source = ?, is_research = ? "
+                "WHERE pmid = ?", updates
             )
             db.conn.commit()
+            logger.info(f"  Re-classified {len(updates):,} papers with iCite evidence")
 
         # Collect all referenced PMIDs across all new papers
         all_refs = set()

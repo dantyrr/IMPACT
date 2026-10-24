@@ -73,3 +73,33 @@ def fetch_bylines(full, pmids: List[int]) -> Dict[int, Dict[str, tuple]]:
                 ends[key] = (format_author(row[1], row[2], row[3]), affils.get((pmid, row[0])))
             out[pmid] = ends
     return out
+
+
+def byline_updates(bylines) -> Tuple[list, list]:
+    """-> (names, affs): name where known; the four affiliation fields only when
+    the author has an affiliation with at least one parsed value."""
+    names, affs = [], []
+    for pmid, ends in bylines.items():
+        for key in ("first", "last"):
+            name, aff = ends[key]
+            if name:
+                names.append((key, name, pmid))
+            if aff and any(v is not None for v in aff):
+                affs.append((key, *aff, pmid))
+    return names, affs
+
+
+def write_bylines(conn, bylines) -> None:
+    """Write fetch_bylines() output to impact.db papers (no commit).
+
+    Sets {first,last}_author_name and _institution/_city/_state/_country only;
+    *_forename and gender columns are never touched, and an author without a
+    parsed affiliation keeps the existing affiliation fields."""
+    names, affs = byline_updates(bylines)
+    for key in ("first", "last"):
+        conn.executemany(f"UPDATE papers SET {key}_author_name = ? WHERE pmid = ?",
+                         [(n, p) for k, n, p in names if k == key])
+        conn.executemany(
+            f"UPDATE papers SET {key}_author_institution = ?, {key}_author_city = ?, "
+            f"{key}_author_state = ?, {key}_author_country = ? WHERE pmid = ?",
+            [(i, c, s, co, p) for k, i, c, s, co, p in affs if k == key])

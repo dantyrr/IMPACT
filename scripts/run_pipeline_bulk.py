@@ -2,7 +2,7 @@
 """
 IMPACT Pipeline — Bulk DB Edition
 
-Like run_pipeline.py but uses data/pubmed_bulk.db for:
+Like run_pipeline.py but uses data/pubmed_full.db for:
   - Paper discovery by ISSN  (replaces PubMed ESearch)
   - Paper metadata           (replaces PubMed ESummary)
   - Author data              (replaces PubMed EFetch)
@@ -12,7 +12,7 @@ Only contacts an external API for:
   - iCite: cited_by lists (the citation links we need for rolling IF)
 
 Requirements:
-  data/pubmed_bulk.db must exist (run scripts/download_pubmed_bulk.py first).
+  data/pubmed_full.db must exist (run scripts/build_pubmed_full.py first).
 
 Usage:
     python scripts/run_pipeline_bulk.py --journal bmj
@@ -23,6 +23,7 @@ Usage:
 
 import sys
 import os
+import json
 import sqlite3
 import logging
 from datetime import datetime
@@ -32,8 +33,9 @@ REPO_ROOT = Path(__file__).parent.parent
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.pipeline.config import JOURNALS, DB_PATH, PUBMED_BULK_DB_PATH, ISSN_BULK_MAP
+from src.pipeline.config import JOURNALS, DB_PATH, PUBMED_FULL_DB_PATH, ISSN_BULK_MAP
 from src.pipeline.db_manager import DatabaseManager
+from src.pipeline.doc_class import classify, icite_evidence
 from src.pipeline.icite_fetcher import IciteFetcher
 from src.pipeline.pubmed_fetcher import PubMedFetcher
 
@@ -49,8 +51,8 @@ _parse_affiliation = PubMedFetcher._parse_affiliation  # reuse existing parser
 def open_bulk_db(path: str) -> sqlite3.Connection:
     if not os.path.exists(path):
         raise FileNotFoundError(
-            f"pubmed_bulk.db not found at {path}\n"
-            f"Run: python scripts/download_pubmed_bulk.py"
+            f"pubmed_full.db not found at {path}\n"
+            f"Run: python scripts/build_pubmed_full.py"
         )
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     conn.execute("PRAGMA cache_size=-131072")   # 128 MB read cache
@@ -59,13 +61,14 @@ def open_bulk_db(path: str) -> sqlite3.Connection:
 
 def get_papers_from_bulk(bulk: sqlite3.Connection, issn: str,
                          year_start: int, year_end: int) -> list:
-    """Return all rows for an ISSN + year range from pubmed_bulk.db."""
+    """Return all rows for an ISSN + year range from pubmed_full.db."""
     bulk_issn = ISSN_BULK_MAP.get(issn, issn)
     return bulk.execute(
         """SELECT pmid, pub_year, pub_month, title,
                   first_author, first_affil,
                   last_author,  last_affil,
-                  pub_type, doi
+                  pub_type, doi,
+                  pub_types, has_abstract, page_count
            FROM pubmed
            WHERE issn = ? AND pub_year >= ? AND pub_year <= ?
            ORDER BY pub_year, pub_month, pmid""",
@@ -76,7 +79,7 @@ def get_papers_from_bulk(bulk: sqlite3.Connection, issn: str,
 def get_citing_dates(bulk: sqlite3.Connection,
                      citing_pmids: set) -> dict:
     """
-    Batch-lookup (year, month) for citing PMIDs from pubmed_bulk.db.
+    Batch-lookup (year, month) for citing PMIDs from pubmed_full.db.
     Returns {pmid: (year, month)}.
     """
     if not citing_pmids:
@@ -104,7 +107,7 @@ def open_icite_bulk_db(path: str) -> sqlite3.Connection:
 def get_icite_local(icite_bulk: sqlite3.Connection, pmids: list) -> dict:
     """
     Look up citation data from local icite_bulk.db.
-    Returns {pmid: {"cited_by": [list], "is_research_article": bool}}.
+    Returns {pmid: {"cited_by": [list], "is_research_article": bool|None}}.
 
     Uses a temp table + PK join on the 40M-row metadata table (fast),
     avoiding the old 893M-row citations table.
@@ -127,12 +130,13 @@ def get_icite_local(icite_bulk: sqlite3.Connection, pmids: list) -> dict:
     result = {}
     for pmid, is_res, cited_by_str in rows:
         cited_by = [int(x) for x in cited_by_str.split() if x] if cited_by_str else []
-        result[pmid] = {"cited_by": cited_by, "is_research_article": bool(is_res)}
+        result[pmid] = {"cited_by": cited_by,
+                        "is_research_article": None if is_res is None else bool(is_res)}
 
-    # Placeholder for very new papers not yet in snapshot
+    # Placeholder for very new papers not yet in snapshot (no iCite evidence)
     for pmid in pmids:
         if pmid not in result:
-            result[pmid] = {"cited_by": [], "is_research_article": True}
+            result[pmid] = {"cited_by": [], "is_research_article": None}
 
     return result
 
@@ -171,11 +175,17 @@ def process_journal(issn: str, meta: dict, db: DatabaseManager,
     # ------------------------------------------------------------------ #
     logger.info("Step 2: Storing papers...")
     paper_dicts = []
+    class_inputs = {}  # pmid -> (pub_types, has_abstract, page_count, title)
     for (pmid, pub_year, pub_month, title,
          first_author, first_affil,
          last_author, last_affil,
-         pub_type, doi) in rows:
+         pub_type, doi,
+         pub_types, has_abstract, page_count) in rows:
         pub_date = f"{pub_year}-{pub_month:02d}-01"
+        class_inputs[pmid] = (json.loads(pub_types) if pub_types else [],
+                              None if has_abstract is None else bool(has_abstract),
+                              page_count, title)
+        cls, src = classify(*class_inputs[pmid][:3], None, title)
         paper_dicts.append({
             "pmid":       pmid,
             "journal_id": journal_id,
@@ -184,8 +194,10 @@ def process_journal(issn: str, meta: dict, db: DatabaseManager,
             "pub_year":   pub_year,
             "pub_month":  pub_month,
             "pub_type":   pub_type,
-            "is_research": 1,   # updated from iCite below
+            "is_research": 1 if cls == "research" else 0,
             "doi":        doi,
+            "doc_class":  cls,
+            "class_source": src,
         })
     db.add_papers_bulk(paper_dicts)
     stored = db.get_paper_count_for_journal(journal_id)
@@ -204,13 +216,17 @@ def process_journal(issn: str, meta: dict, db: DatabaseManager,
         icite_data = icite.fetch_batch(pmids)
         logger.info(f"  API returned data for {len(icite_data):,} papers")
 
-    # Update is_research from iCite (more reliable than PubMed pub type)
-    for pmid, record in icite_data.items():
-        is_research = 1 if record.get("is_research_article") else 0
-        db.conn.execute(
-            "UPDATE papers SET is_research = ? WHERE pmid = ?",
-            (is_research, pmid),
-        )
+    # Classify every paper, with iCite's is_research_article as evidence
+    # where iCite has the paper (it never sets the class by itself)
+    class_rows = []
+    for pmid, (types, has_abs, pages, title) in class_inputs.items():
+        evidence = icite_evidence((icite_data.get(pmid) or {}).get("is_research_article"))
+        cls, src = classify(types, has_abs, pages, evidence, title)
+        class_rows.append((cls, src, 1 if cls == "research" else 0, pmid))
+    db.conn.executemany(
+        "UPDATE papers SET doc_class = ?, class_source = ?, is_research = ? WHERE pmid = ?",
+        class_rows,
+    )
     db.commit()
 
     # ------------------------------------------------------------------ #
@@ -224,7 +240,7 @@ def process_journal(issn: str, meta: dict, db: DatabaseManager,
         all_citing.update(record.get("cited_by", []))
     logger.info(f"  {len(all_citing):,} unique citing PMIDs to date")
 
-    # Batch-lookup dates from bulk DB
+    # Batch-lookup dates from pubmed_full.db
     citing_dates = get_citing_dates(bulk, all_citing)
     missing = all_citing - set(citing_dates)
     logger.info(
@@ -276,7 +292,7 @@ def process_journal(issn: str, meta: dict, db: DatabaseManager,
     for (pmid, _, _, _,
          first_author, first_affil,
          last_author, last_affil,
-         _, _) in rows:
+         *_) in rows:
         if not first_author and not last_author:
             # No author info — store sentinel so we don't retry endlessly
             author_rows.append({
@@ -367,8 +383,8 @@ def main():
     db.migrate_add_author_columns()
     icite = IciteFetcher()
 
-    logger.info(f"Opening bulk DB: {PUBMED_BULK_DB_PATH}")
-    bulk = open_bulk_db(PUBMED_BULK_DB_PATH)
+    logger.info(f"Opening PubMed DB: {PUBMED_FULL_DB_PATH}")
+    bulk = open_bulk_db(PUBMED_FULL_DB_PATH)
     bulk_count = bulk.execute("SELECT COUNT(*) FROM pubmed").fetchone()[0]
     logger.info(f"  {bulk_count:,} records in bulk DB")
 

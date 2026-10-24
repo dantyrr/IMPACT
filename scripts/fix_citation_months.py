@@ -33,7 +33,7 @@ from typing import Dict, List, Optional, Tuple
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.pipeline.config import (DB_PATH, PUBMED_API_KEY, PUBMED_EMAIL,
-                                 PMID_DATE_CACHE_PATH, PUBMED_BULK_DB_PATH)
+                                 PMID_DATE_CACHE_PATH, PUBMED_FULL_DB_PATH)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -270,12 +270,12 @@ def main():
     # Only fetch PMIDs not already in the cache
     uncached_pmids = [p for p in all_pmids if p not in date_map]
 
-    # Check pubmed_bulk.db for a fast local lookup before hitting the API
-    if uncached_pmids and os.path.exists(PUBMED_BULK_DB_PATH):
+    # Check pubmed_full.db for a fast local lookup before hitting the API
+    if uncached_pmids and os.path.exists(PUBMED_FULL_DB_PATH):
         logger.info(
-            f"Looking up {len(uncached_pmids):,} PMIDs in pubmed_bulk.db..."
+            f"Looking up {len(uncached_pmids):,} PMIDs in pubmed_full.db..."
         )
-        bulk_conn = sqlite3.connect(f"file:{PUBMED_BULK_DB_PATH}?mode=ro", uri=True)
+        bulk_conn = sqlite3.connect(f"file:{PUBMED_FULL_DB_PATH}?mode=ro", uri=True)
         # Use a temp table to avoid very long IN clauses
         bulk_conn.execute("CREATE TEMP TABLE _lkp (pmid INTEGER PRIMARY KEY)")
         bulk_conn.executemany(

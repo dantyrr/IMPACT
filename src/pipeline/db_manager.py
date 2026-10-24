@@ -162,14 +162,16 @@ class DatabaseManager:
         self.conn.commit()
 
     def add_papers_bulk(self, papers: List[Dict]):
-        """Bulk-insert papers (skip duplicates)."""
+        """Bulk-insert papers (skip duplicates). doc_class / class_source are
+        optional keys (NULL when absent)."""
         self.conn.executemany(
             """INSERT OR IGNORE INTO papers
                (pmid, journal_id, title, pub_date, pub_year, pub_month,
-                pub_type, is_research, doi)
+                pub_type, is_research, doi, doc_class, class_source)
                VALUES (:pmid, :journal_id, :title, :pub_date, :pub_year,
-                        :pub_month, :pub_type, :is_research, :doi)""",
-            papers,
+                        :pub_month, :pub_type, :is_research, :doi,
+                        :doc_class, :class_source)""",
+            [{"doc_class": None, "class_source": None, **p} for p in papers],
         )
         self.conn.commit()
 

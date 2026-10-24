@@ -54,6 +54,23 @@ def class_for_types(pub_types: List[str]) -> str:
     return 'other'
 
 
+def icite_evidence(value) -> Optional[bool]:
+    """iCite's is_research_article as evidence: True/False, or None when unknown.
+
+    The API has returned booleans and "Yes"/"No" strings; a missing value is no
+    evidence (None), never False."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        v = value.strip().lower()
+        if v in ("yes", "true", "1"):
+            return True
+        if v in ("no", "false", "0"):
+            return False
+        return None
+    return bool(value)
+
+
 def classify(pub_types: List[str], has_abstract: Optional[bool],
              page_count: Optional[int], icite_is_research: Optional[bool],
              title: Optional[str]) -> Tuple[str, str]:

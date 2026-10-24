@@ -3,7 +3,7 @@
 Build a registry of all PubMed journals eligible for IMPACT processing.
 
 Downloads NLM's J_Medline.txt (the authoritative list of all PubMed journals)
-and cross-references with pubmed_bulk.db to find journals with enough papers.
+and cross-references with pubmed_full.db (built by build_pubmed_full.py) to find journals with enough papers.
 
 Output: data/journal_registry.json
   [{issn, name, abbreviation, slug, paper_count}, ...]
@@ -26,7 +26,7 @@ from pathlib import Path
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.pipeline.config import PUBMED_BULK_DB_PATH
+from src.pipeline.config import PUBMED_FULL_DB_PATH
 
 NLM_URL   = "https://ftp.ncbi.nlm.nih.gov/pubmed/J_Entrez.txt"
 OUTPUT    = Path("data/journal_registry.json")
@@ -84,8 +84,8 @@ def parse_nlm(text: str) -> dict:
 
 
 def get_paper_counts(min_year: int = 2010) -> dict:
-    """Return {issn: count} for papers published >= min_year in pubmed_bulk.db."""
-    conn = sqlite3.connect(f"file:{PUBMED_BULK_DB_PATH}?mode=ro", uri=True)
+    """Return {issn: count} for papers published >= min_year in pubmed_full.db."""
+    conn = sqlite3.connect(f"file:{PUBMED_FULL_DB_PATH}?mode=ro", uri=True)
     rows = conn.execute(
         "SELECT issn, COUNT(*) FROM pubmed "
         "WHERE pub_year >= ? AND issn IS NOT NULL AND issn != '' "
@@ -109,7 +109,7 @@ def main():
     nlm = parse_nlm(r.text)
     logger.info(f"  {len(nlm):,} ISSNs parsed from NLM list")
 
-    logger.info("Counting papers per ISSN in pubmed_bulk.db (2010–present)...")
+    logger.info("Counting papers per ISSN in pubmed_full.db (2010–present)...")
     counts = get_paper_counts()
     logger.info(f"  {len(counts):,} distinct ISSNs in bulk DB")
 

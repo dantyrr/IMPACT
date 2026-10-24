@@ -25,7 +25,8 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from src.pipeline.class_inputs import fetch_bylines, fetch_class_inputs, open_ro  # noqa: E402
+from src.pipeline.class_inputs import (fetch_bylines, fetch_class_inputs, open_ro,  # noqa: E402
+                                       write_bylines)
 from src.pipeline.config import DB_PATH, ICITE_BULK_DB_PATH, PUBMED_FULL_DB_PATH  # noqa: E402
 from src.pipeline.db_manager import ensure_doc_class_columns  # noqa: E402
 from src.pipeline.doc_class import classify  # noqa: E402
@@ -71,19 +72,6 @@ def _updates_for_batch(inputs):
         counts[cls] += 1
         rows.append((d["pub_type"], cls, src, 1 if cls == "research" else 0, pmid))
     return rows, counts
-
-
-def _byline_updates(bylines):
-    """name where known; the four affiliation fields only when the author has one."""
-    names, affs = [], []
-    for pmid, ends in bylines.items():
-        for key in ("first", "last"):
-            name, aff = ends[key]
-            if name:
-                names.append((key, name, pmid))
-            if aff and any(v is not None for v in aff):
-                affs.append((key, *aff, pmid))
-    return names, affs
 
 
 def main(argv=None) -> int:
@@ -154,17 +142,9 @@ def main(argv=None) -> int:
             rows, batch_counts = _updates_for_batch(inputs)
             counts.update(batch_counts)
             if not args.dry_run:
-                bylines = fetch_bylines(full, list(inputs))
-                names, affs = _byline_updates(bylines)
                 conn.executemany("UPDATE papers SET pub_type = COALESCE(?, pub_type), doc_class = ?, "
                                  "class_source = ?, is_research = ? WHERE pmid = ?", rows)
-                for key in ("first", "last"):
-                    conn.executemany(f"UPDATE papers SET {key}_author_name = ? WHERE pmid = ?",
-                                     [(n, p) for k, n, p in names if k == key])
-                    conn.executemany(
-                        f"UPDATE papers SET {key}_author_institution = ?, {key}_author_city = ?, "
-                        f"{key}_author_state = ?, {key}_author_country = ? WHERE pmid = ?",
-                        [(i, c, s, co, p) for k, i, c, s, co, p in affs if k == key])
+                write_bylines(conn, fetch_bylines(full, list(inputs)))
                 conn.commit()
                 n_batch += 1
                 if n_batch % CHECKPOINT_EVERY == 0:
