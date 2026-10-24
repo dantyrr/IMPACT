@@ -122,8 +122,10 @@ def tracked_issns_from_impact(impact_db_path: str) -> set:
     return issns
 
 
-def _affil_id(conn, cache: dict, text: str, ror_id) -> int:
-    aid = cache.get(text)
+def _affil_id(conn, cache: dict, staged: dict, text: str, ror_id) -> int:
+    aid = staged.get(text)
+    if aid is None:
+        aid = cache.get(text)
     if aid is not None:
         return aid
     row = conn.execute("SELECT affil_id FROM affil_strings WHERE text = ?", (text,)).fetchone()
@@ -144,9 +146,7 @@ def _affil_id(conn, cache: dict, text: str, ror_id) -> int:
         conn.executemany(
             "INSERT INTO affil_countries (affil_id, part_order, country) VALUES (?,?,?)",
             [(aid, i, l.country) for i, l in enumerate(parse_locations(text)) if l.country])
-    if len(cache) >= _CACHE_LIMIT:
-        cache.clear()
-    cache[text] = aid
+    staged[text] = aid
     return aid
 
 
@@ -156,6 +156,10 @@ def _delete_byline(conn, pmids):
 
 
 def store_records(conn, records: list, in_scope: Callable[[dict], bool]) -> None:
+    # A batch may carry several versions of one pmid: the last occurrence wins.
+    records = list({r["pmid"]: r for r in records}.values())
+    cache = _affil_caches.setdefault(id(conn), {})
+    staged: dict = {}  # new text -> id; merged into cache only after commit
     with conn:  # one transaction
         conn.executemany(
             "INSERT OR REPLACE INTO pubmed (pmid, issn, pub_year, pub_month, title, "
@@ -172,7 +176,6 @@ def store_records(conn, records: list, in_scope: Callable[[dict], bool]) -> None
         # A re-delivered record may have lost authors, so clear old rows first.
         # Also clear when a record has dropped out of scope.
         _delete_byline(conn, [r["pmid"] for r in records])
-        cache = _affil_caches.setdefault(id(conn), {})
         for r in scoped:
             pmid = r["pmid"]
             conn.executemany(
@@ -188,7 +191,7 @@ def store_records(conn, records: list, in_scope: Callable[[dict], bool]) -> None
                     text = af.get("text")
                     if not text:
                         continue
-                    aid = _affil_id(conn, cache, text, af.get("ror_id"))
+                    aid = _affil_id(conn, cache, staged, text, af.get("ror_id"))
                     if aid in seen:
                         continue
                     seen.add(aid)
@@ -196,6 +199,10 @@ def store_records(conn, records: list, in_scope: Callable[[dict], bool]) -> None
             conn.executemany(
                 "INSERT INTO author_affils (pmid, position, affil_order, affil_id) "
                 "VALUES (?,?,?,?)", links)
+    # Committed: only now is it safe to remember the new ids.
+    if len(cache) + len(staged) >= _CACHE_LIMIT:
+        cache.clear()
+    cache.update(staged)
 
 
 def delete_pmids(conn, pmids: list) -> None:

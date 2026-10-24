@@ -111,3 +111,58 @@ def test_tracked_issns_from_impact(tmp_path):
     c.close()
     got = tracked_issns_from_impact(p)
     assert got == {"1111-1111", "1545-9993", "1545-9985"}
+
+
+def test_failed_batch_does_not_poison_affil_cache(conn, scope):
+    text = "Univ A, Boston, MA, USA."
+    bad = rec(1, [author(1, [text])])
+    bad2 = rec(2, [author(1, [text])])
+    bad2["title"] = object()  # unbindable -> the pubmed insert raises, rolling back the batch
+    with pytest.raises(Exception):
+        store_records(conn, [bad, bad2], scope)
+    assert count(conn, "affil_strings") == 0
+    store_records(conn, [rec(3, [author(1, [text])])], scope)
+    rows = conn.execute("SELECT s.text FROM author_affils a "
+                        "JOIN affil_strings s USING (affil_id)").fetchall()
+    assert rows == [(text,)] and count(conn, "author_affils") == 1
+
+
+def test_failed_batch_after_affil_insert_is_not_cached(conn, scope):
+    text = "Univ A, Boston, MA, USA."
+    good = rec(1, [author(1, [text])])
+    broken = rec(2, [author(1, [text])])
+    broken["authors"][0]["position"] = None  # NOT NULL violation in authors, after affil insert
+    with pytest.raises(Exception):
+        store_records(conn, [good, broken], scope)
+    store_records(conn, [rec(3, [author(1, [text])])], scope)
+    rows = conn.execute("SELECT a.pmid, s.text FROM author_affils a "
+                        "JOIN affil_strings s USING (affil_id)").fetchall()
+    assert rows == [(3, text)]
+
+
+def test_institution_state_city_and_ror(conn, scope):
+    both = "Harvard Medical School, Boston, MA, USA; University of Oxford, Oxford, UK"
+    first_only = "Department of Biology, Harvard University, Cambridge, MA 02138, USA."
+    a = author(1, [both, first_only])
+    a["affiliations"][1]["ror_id"] = "https://ror.org/03vek6s52"
+    store_records(conn, [rec(1, [a])], scope)
+    r = conn.execute("SELECT institution, institution_type, country, state, city "
+                     "FROM affil_strings WHERE text=?", (both,)).fetchone()
+    assert r[0] and "Oxford" in r[0] and r[1] and r[2] == "United Kingdom"
+    f = conn.execute("SELECT institution, institution_type, country, state, city, ror_id "
+                     "FROM affil_strings WHERE text=?", (first_only,)).fetchone()
+    assert f[0] and "Harvard" in f[0] and f[1]
+    assert f[2:] == ("USA", "MA", "Cambridge", "https://ror.org/03vek6s52")
+
+
+def test_institution_none_when_no_part_has_one(conn, scope):
+    store_records(conn, [rec(1, [author(1, ["Boston, MA, USA"])])], scope)
+    r = conn.execute("SELECT institution, institution_type FROM affil_strings").fetchone()
+    assert r == (None, None)
+
+
+def test_duplicate_pmid_in_batch_last_wins(conn, scope):
+    five = [author(i, ["Univ A, Boston, MA, USA."]) for i in range(1, 6)]
+    store_records(conn, [rec(9, five), rec(9, five[:3])], scope)
+    pos = [r[0] for r in conn.execute("SELECT position FROM authors WHERE pmid=9 ORDER BY position")]
+    assert pos == [1, 2, 3] and count(conn, "pubmed") == 1
