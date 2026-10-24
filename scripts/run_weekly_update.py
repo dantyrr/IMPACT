@@ -40,6 +40,7 @@ from src.pipeline.config import (
     WEBSITE_DATA_DIR,
 )
 from src.pipeline.db_manager import DatabaseManager
+from src.pipeline.json_exporter import JSONExporter
 from src.pipeline.impact_calculator import ImpactCalculator, canonical_pub_type
 
 logging.basicConfig(
@@ -354,17 +355,7 @@ def fetch_icite_references(pmids: list, batch_size: int = 200) -> dict:
 
 def format_snapshot(s: dict) -> dict:
     """Format a raw compute_rolling_if() result for the JSON timeseries."""
-    return {
-        "month": s["month"],
-        "rolling_if": s["rolling_if"],
-        "rolling_if_no_reviews": s["rolling_if_no_reviews"],
-        "papers": s["paper_count"],
-        "research": s.get("research_count", 0),
-        "reviews": s["review_count"],
-        "citations": s["citation_count"],
-        "by_type": s.get("by_type", {}),
-        "pub_by_type": s.get("pub_by_type", {}),
-    }
+    return JSONExporter._format_timeseries([s])[0]
 
 
 def update_journal_snapshot(db, calc, journal_id, slug, name, issn,

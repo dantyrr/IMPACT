@@ -150,39 +150,30 @@ class ImpactCalculator:
         if not papers:
             return self._empty_snapshot(target_year, target_month)
 
-        cats = [category_of(p.get("doc_class"), p.get("pub_type")) for p in papers]
-        research_pmids = [p["pmid"] for p, c in zip(papers, cats) if c == 'research']
-        citable_pmids = [p["pmid"] for p, c in zip(papers, cats) if c in CITABLE]
-
-        total_citations = self.db.count_citations_for_papers(
-            [p["pmid"] for p in papers], cite_start_date, cite_end_date
-        )
-        citable_citations = self.db.count_citations_for_papers(
-            citable_pmids, cite_start_date, cite_end_date
-        )
-        research_citations = self.db.count_citations_for_papers(
-            research_pmids, cite_start_date, cite_end_date
-        )
-
-        n_all = len(papers)
-        n_research = len(research_pmids)
-        n_reviews = cats.count('review')
-        n_citable = len(citable_pmids)
-        n_inferred = sum(1 for p in papers if p.get("class_source") == 'inferred')
-
-        rolling_if = citable_citations / n_citable if n_citable > 0 else 0.0
-        rolling_if_no_reviews = research_citations / n_research if n_research > 0 else 0.0
-
-        # Per-article-type breakdown
+        # One grouped query gives papers and citations per (doc_class, pub_type);
+        # every total below is derived from it so they cannot disagree.
         raw_by_type = self.db.count_papers_and_citations_by_type(
             journal_id, paper_start_date, paper_end_date,
             cite_start_date, cite_end_date
         )
+        warned = set()
         by_type = {cat: {"papers": 0, "citations": 0} for cat in ARTICLE_CATEGORIES}
         for row in raw_by_type:
-            cat = category_of(row.get("doc_class"), row["pub_type"])
+            cat = self._known_category(row.get("doc_class"), row["pub_type"], journal_id, warned)
             by_type[cat]["papers"] += row["paper_count"]
             by_type[cat]["citations"] += row["citation_count"]
+
+        n_all = sum(v["papers"] for v in by_type.values())
+        total_citations = sum(v["citations"] for v in by_type.values())
+        n_citable = sum(by_type[c]["papers"] for c in CITABLE)
+        citable_citations = sum(by_type[c]["citations"] for c in CITABLE)
+        n_research = by_type["research"]["papers"]
+        research_citations = by_type["research"]["citations"]
+        n_reviews = by_type["review"]["papers"]
+        n_inferred = sum(1 for p in papers if p.get("class_source") == 'inferred')
+
+        rolling_if = citable_citations / n_citable if n_citable > 0 else 0.0
+        rolling_if_no_reviews = research_citations / n_research if n_research > 0 else 0.0
 
         # Actual papers published this month (not rolling window)
         raw_pub = self.db.count_papers_by_type_in_month(
@@ -190,7 +181,7 @@ class ImpactCalculator:
         )
         pub_by_type = {}
         for row in raw_pub:
-            cat = category_of(row.get("doc_class"), row["pub_type"])
+            cat = self._known_category(row.get("doc_class"), row["pub_type"], journal_id, warned)
             pub_by_type[cat] = pub_by_type.get(cat, 0) + row["paper_count"]
 
         return {
@@ -210,6 +201,19 @@ class ImpactCalculator:
             "paper_window": f"{paper_start_date} to {paper_end_date}",
             "citation_window": f"{cite_start_date} to {cite_end_date}",
         }
+
+    @staticmethod
+    def _known_category(doc_class, pub_type, journal_id, warned) -> str:
+        """category_of, but a doc_class outside ARTICLE_CATEGORIES becomes 'other'
+        (warned once per value per call) instead of breaking the timeseries."""
+        cat = category_of(doc_class, pub_type)
+        if cat not in ARTICLE_CATEGORIES:
+            if cat not in warned:
+                warned.add(cat)
+                logger.warning("journal %s: unknown doc_class %r mapped to 'other'",
+                               journal_id, cat)
+            return 'other'
+        return cat
 
     def compute_journal_timeseries(self, journal_id: int,
                                     start_year: int, start_month: int,

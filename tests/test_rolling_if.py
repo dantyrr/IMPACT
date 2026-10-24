@@ -151,3 +151,26 @@ def test_ensure_doc_class_columns_migrates_and_is_idempotent(tmp_path):
 def test_fresh_db_has_columns(db):
     cols = [r[1] for r in db.conn.execute("PRAGMA table_info(papers)")]
     assert cols.count("doc_class") == 1 and cols.count("class_source") == 1
+
+
+def test_unknown_doc_class_maps_to_other(db, caplog):
+    jid = db.add_journal("6666-6666", "Bogus", slug="bogus")
+    add(db, jid, "research", 1)
+    add(db, jid, "bogus", 4)
+    with caplog.at_level("WARNING"):
+        s = ImpactCalculator(db).compute_rolling_if(jid, 2024, 12)
+    assert s["by_type"]["other"] == {"papers": 1, "citations": 4}
+    assert s["citable_papers"] == 1 and s["paper_count"] == 2
+    assert "bogus" in caplog.text
+
+
+def test_weekly_format_snapshot_has_new_fields(db):
+    import importlib.util, os
+    spec = importlib.util.spec_from_file_location(
+        "run_weekly_update",
+        os.path.join(os.path.dirname(__file__), "..", "scripts", "run_weekly_update.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    jid = build_window(db)
+    pt = mod.format_snapshot(ImpactCalculator(db).compute_rolling_if(jid, 2024, 12))
+    assert (pt["citable_papers"], pt["citable_citations"], pt["inferred_papers"]) == (5, 11, 0)
