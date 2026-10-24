@@ -243,6 +243,7 @@ DB_PATH = os.path.join(_REPO_ROOT, "data", "impact.db")
 PMID_DATE_CACHE_PATH = os.path.join(_REPO_ROOT, "data", "pmid_dates.db")
 PUBMED_BULK_DB_PATH  = os.path.join(_REPO_ROOT, "data", "pubmed_bulk.db")
 PUBMED_FULL_DB_PATH = os.path.join(_REPO_ROOT, "data", "pubmed_full.db")
+ICITE_BULK_DB_PATH = os.path.join(_REPO_ROOT, "data", "icite_bulk.db")
 WEBSITE_DATA_DIR = os.path.join(_REPO_ROOT, "docs", "data")
 SNAPSHOTS_DIR = os.path.join(WEBSITE_DATA_DIR, "journals")
 

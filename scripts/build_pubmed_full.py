@@ -31,8 +31,6 @@ import io
 import logging
 import os
 import re
-import shutil
-import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -49,6 +47,8 @@ from src.pipeline.pubmed_full_db import (delete_pmids, make_byline_scope,  # noq
                                          open_full_db, store_records,
                                          tracked_issns_from_impact)
 from src.pipeline.pubmed_xml import iter_pubmed_xml  # noqa: E402
+from src.pipeline.rebuild_guard import (_checkpoint, free_gb,  # noqa: E402,F401
+                                        rebuild_lock_held)
 
 logger = logging.getLogger("build_pubmed_full")
 
@@ -59,7 +59,6 @@ IMPACT_DB_PATH = DB_PATH
 FULL_DB_PATH = PUBMED_FULL_DB_PATH
 DATA_DIR = os.path.dirname(PUBMED_FULL_DB_PATH)
 SAMPLE_DB_PATH = os.path.join(DATA_DIR, "pubmed_full.sample.db")
-LOCK_SCRIPT = os.path.join(_REPO_ROOT, "scripts", "rebuild_lock.py")
 
 CHUNK_SIZE = 5_000
 CHECKPOINT_EVERY = 50
@@ -103,20 +102,6 @@ def plan_files(baseline: List[str], updates: List[str]) -> List[Tuple[str, str]]
     """(url, filename): every baseline file by name, then every update file by name."""
     return ([(BASELINE_URL + f, f) for f in sorted(baseline)]
             + [(UPDATE_URL + f, f) for f in sorted(updates)])
-
-
-def free_gb(path: str) -> float:
-    return shutil.disk_usage(path).free / GB
-
-
-def rebuild_lock_held() -> bool:
-    """True iff `rebuild_lock.py status` reports a live `rebuild` holder (exit 0)."""
-    r = subprocess.run([sys.executable, LOCK_SCRIPT, "status"], capture_output=True)
-    return r.returncode == 0
-
-
-def _checkpoint(conn) -> None:
-    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
 
 # ---- Ingest ----
