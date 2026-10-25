@@ -103,11 +103,9 @@ Flags are computed on the most recent point whose 12-month citation window ended
 | Flag | Condition |
 |------|-----------|
 | `small_research_sample` | fewer than 20 research items in the paper window |
-| `small_review_sample` | fewer than 15 review items in the paper window |
+| `small_review_sample` | 1 to 14 review items in the paper window (a journal with no reviews has no review rate, so it is not flagged) |
 | `review_journal` | reviews are 50% or more of citable items |
 | `inferred_types` | 10% or more of the papers in the window have an inferred class |
-
-<!-- revise after flag distribution -->
 
 ---
 

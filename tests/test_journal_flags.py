@@ -25,7 +25,7 @@ def test_small_research_sample_boundary(n, flagged):
     assert ("small_research_sample" in compute_flags(pt(research=n))) is flagged
 
 
-@pytest.mark.parametrize("n,flagged", [(14, True), (15, False)])
+@pytest.mark.parametrize("n,flagged", [(0, False), (1, True), (14, True), (15, False)])
 def test_small_review_sample_boundary(n, flagged):
     assert ("small_review_sample" in compute_flags(pt(reviews=n))) is flagged
 
@@ -47,7 +47,7 @@ def test_zero_denominators_are_safe():
     p = pt(research=0, reviews=0, citable=0, papers=0, inferred=0)
     flags = compute_flags(p)
     assert "review_journal" not in flags and "inferred_types" not in flags
-    assert "small_research_sample" in flags and "small_review_sample" in flags
+    assert "small_research_sample" in flags and "small_review_sample" not in flags
 
 
 def test_missing_by_type_tolerated():

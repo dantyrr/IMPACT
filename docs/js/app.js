@@ -925,7 +925,7 @@ class IMPACTApp {
         if (!el) return;
         const FLAG_TEXT = {
             small_research_sample: 'Fewer than 20 research articles in this window, so rates are noisy.',
-            small_review_sample: 'Fewer than 15 reviews in this window, so review rates are noisy.',
+            small_review_sample: 'Only 1 to 14 reviews in this window, so review rates are noisy.',
             review_journal: 'Mostly reviews: at least half of citable items are reviews.',
             inferred_types: "10% or more of this window's items were reclassified from PubMed's type (see Methodology).",
         };

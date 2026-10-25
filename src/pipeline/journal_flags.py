@@ -4,7 +4,7 @@ from datetime import date
 from typing import Dict, List, Optional
 
 SMALL_RESEARCH_MIN = 20     # fewer research items than this -> small_research_sample
-SMALL_REVIEW_MIN = 15       # fewer review items than this -> small_review_sample
+SMALL_REVIEW_MIN = 15       # 1 to this-1 review items -> small_review_sample (none: no review rate to flag)
 REVIEW_JOURNAL_SHARE = 0.5  # reviews / citable items at or above this -> review_journal
 INFERRED_SHARE = 0.10       # inferred / items at or above this -> inferred_types
 SETTLE_MONTHS = 12          # citation window must have ended at least this long ago
@@ -29,7 +29,7 @@ def compute_flags(point: Dict) -> List[str]:
     flags = []
     if research < SMALL_RESEARCH_MIN:
         flags.append("small_research_sample")
-    if reviews < SMALL_REVIEW_MIN:
+    if 0 < reviews < SMALL_REVIEW_MIN:
         flags.append("small_review_sample")
     if citable and reviews / citable >= REVIEW_JOURNAL_SHARE:
         flags.append("review_journal")
