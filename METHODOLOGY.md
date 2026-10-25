@@ -23,13 +23,13 @@ Numerator and denominator are taken over the same set of papers: the citable ite
 
 The citation window is always the 12 months ending at M. The paper window ends the month before the citation window starts, plus an optional gap. Three variants are computed:
 
-| Variant | Paper window | Papers published (months before M) |
-|---------|--------------|------------------------------------|
-| 24-month (default) | 24 months, no gap | 13 to 36 |
-| 12-month | 12 months, no gap | 13 to 24 |
-| 5-year (years 2-6) | 60 months, after a 12-month gap | 25 to 84 |
+| Variant | Paper window | Papers published |
+|---------|--------------|------------------|
+| 24-month (default) | 24 months, no gap | the 24 months ending 12 months before M (12 to 35 months before M) |
+| 12-month | 12 months, no gap | the 12 months ending 12 months before M (12 to 23 months before M) |
+| 5-year (years 2-6) | 60 months, after a 12-month gap | the 60 months ending 24 months before M (24 to 83 months before M) |
 
-Example for M = 2025-02: the citation window is 2024-03 to 2025-02; the 24-month paper window is 2022-03 to 2024-02.
+Example for M = 2025-02: the citation window is 2024-03 to 2025-02; the 24-month paper window is 2022-03 to 2024-02 (35 to 12 months before M); the 12-month paper window is 2023-03 to 2024-02; the 5-year window is 2018-03 to 2023-02.
 
 Each paper is placed in a window by its publication year and month (see "Dates" below), and each citation by the publication year and month of the citing paper.
 

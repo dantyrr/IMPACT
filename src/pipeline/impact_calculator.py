@@ -120,9 +120,9 @@ class ImpactCalculator:
 
         Paper window: `paper_window_months` months ending `paper_skip_months`
         months before the citation window start.
-          - Standard 24-mo:  window=24, skip=0  → papers 13-36 months before target
-          - 12-mo:           window=12, skip=0  → papers 13-24 months before target
-          - 5-yr yr2-6:      window=60, skip=12 → papers 25-84 months before target
+          - Standard 24-mo:  window=24, skip=0  → papers 12-35 months before target
+          - 12-mo:           window=12, skip=0  → papers 12-23 months before target
+          - 5-yr yr2-6:      window=60, skip=12 → papers 24-83 months before target
 
         Returns dict with rolling_if, paper counts, citation counts, by_type.
         """
