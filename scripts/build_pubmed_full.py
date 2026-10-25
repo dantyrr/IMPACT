@@ -17,7 +17,8 @@ Requires a live `rebuild` lock holder (scripts/rebuild_lock.py hold).
 
 Exit codes:
     0  done (or nothing left to do)
-    1  refused: no live `rebuild` lock holder
+    1  refused: no live `rebuild` lock holder, or the holder went away mid-run
+       (re-checked before each file; finished files are committed)
     2  --sample: projected author tables exceed AUTHOR_GB_LIMIT
     3  stopped: free disk below --min-free-gb (finished files are committed)
     4  stopped: a file still failed after retries (re-run resumes at that file),
@@ -233,6 +234,13 @@ def main(argv=None) -> int:
         logger.info(f"{n_done} / {total} files already processed; {len(todo)} to do this run")
 
         for i, (url, filename) in enumerate(todo, 1):
+            if not rebuild_lock_held():
+                conn.commit()
+                _checkpoint(conn)
+                logger.error(f"stopping before {filename}: the rebuild lock holder is gone "
+                             f"(the weekly job could now run); {n_done} / {total} files done. "
+                             f"Restart `rebuild_lock.py hold` and re-run to resume.")
+                return 1
             free = free_gb(DATA_DIR)
             if free < args.min_free_gb:
                 conn.commit()

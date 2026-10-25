@@ -10,7 +10,8 @@ long-lived process holds the lock for the whole rebuild with its own pid in
 `pid`; the wrapper then never sees it as stale.
 
 Usage:
-    python scripts/rebuild_lock.py hold     # run in background; blocks until SIGTERM/SIGINT
+    nohup python scripts/rebuild_lock.py hold > rebuild_lock.log 2>&1 &
+                                            # blocks until SIGTERM/SIGINT; ignores SIGHUP
     python scripts/rebuild_lock.py release  # SIGTERM the holder (only if owner == rebuild)
     python scripts/rebuild_lock.py status   # print pid / owner / alive
 
@@ -74,6 +75,10 @@ def cmd_hold(lock_dir):
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
+    # Closing the launching terminal sends SIGHUP. Dying on it would leave a
+    # dead pid in the lock, which the weekly wrapper clears as stale and then
+    # runs mid-rebuild, so the holder ignores it; only release/SIGTERM/SIGINT stop it.
+    signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
     lock_dir.parent.mkdir(parents=True, exist_ok=True)
     try:

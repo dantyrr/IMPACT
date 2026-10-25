@@ -183,3 +183,17 @@ def test_weekly_wrapper_sees_lock_as_held(lock_dir, holders):
     assert lock_dir.exists()
     out = stanza()
     assert "clearing stale lock" in out and "lock held" not in out
+
+
+def test_sighup_leaves_holder_alive_and_lock_intact(lock_dir, holders):
+    # Closing the launching terminal sends SIGHUP; the holder must survive it,
+    # or the weekly wrapper would see a dead pid and run mid-rebuild.
+    p = start_hold(lock_dir, holders)
+    p.send_signal(signal.SIGHUP)
+    time.sleep(0.5)
+    assert p.poll() is None
+    assert int((lock_dir / "pid").read_text()) == p.pid
+    assert run("status", lock_dir=lock_dir).returncode == 0
+    p.send_signal(signal.SIGTERM)
+    assert p.wait(timeout=10) == 0
+    assert not lock_dir.exists()

@@ -12,7 +12,8 @@ Usage:
     python scripts/apply_pubmed_full.py [--dry-run] [--journals slug,slug] [--min-free-gb 30]
 
 Requires a live `rebuild` lock holder (python scripts/rebuild_lock.py hold).
-Exit codes: 0 done, 1 no lock holder, 3 stopped on low disk (work committed).
+Exit codes: 0 done, 1 no lock holder (at start, or gone before a batch; finished
+batches are committed), 3 stopped on low disk (work committed).
 """
 import argparse
 import logging
@@ -122,6 +123,14 @@ def main(argv=None) -> int:
 
         counts, seen, matched, last_pmid, n_batch = Counter(), 0, 0, 0, 0
         while True:
+            if not rebuild_lock_held():
+                conn.commit()
+                if not args.dry_run:
+                    _checkpoint(conn)
+                logger.error(f"stopping: the rebuild lock holder is gone (the weekly job could "
+                             f"now run); {matched} papers applied up to pmid {last_pmid}. "
+                             f"Restart `rebuild_lock.py hold` and re-run.")
+                return 1
             if not args.dry_run:
                 free = free_gb(os.path.dirname(IMPACT_DB_PATH))
                 if free < args.min_free_gb:

@@ -332,3 +332,16 @@ def test_validate_report(env, tmp_path, monkeypatch):
     assert rows["4"] == ["Foo-Reply", "no", "yes", "no"]  # reply, not a dup
     # read-only: impact.db has no doc_class column
     assert "doc_class" not in [r[1] for r in fetch(env.impact, "PRAGMA table_info(papers)")]
+
+
+def test_lock_lost_mid_run_commits_and_exits_1(env, monkeypatch, caplog):
+    make_impact(env.impact, [{"pmid": i} for i in (1, 2, 3, 4)])
+    make_full(env.full, [{"pmid": i} for i in (1, 2, 3, 4)])
+    monkeypatch.setattr(apply_mod, "BATCH_SIZE", 2)
+    held = iter([True, True, False])  # start check, batch 1, batch 2
+    monkeypatch.setattr(apply_mod, "rebuild_lock_held", lambda: next(held))
+    with caplog.at_level("INFO", logger=apply_mod.logger.name):
+        assert apply_mod.main([]) == 1
+    assert fetch(env.impact, "SELECT pmid, doc_class FROM papers ORDER BY pmid") == \
+        [(1, "research"), (2, "research"), (3, None), (4, None)]
+    assert "rebuild lock holder is gone" in caplog.text

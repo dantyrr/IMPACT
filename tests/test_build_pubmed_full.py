@@ -317,3 +317,17 @@ def test_empty_baseline_listing_never_applies_updates(env, monkeypatch):
     ftp = install(monkeypatch, FakeFTP({}, {"u1.xml.gz": gz(article(1))}))
     assert run_main([]) == 4
     assert ftp.downloads == []
+
+
+def test_lock_lost_mid_run_commits_and_exits_1(env, monkeypatch, caplog):
+    ftp = install(monkeypatch, FakeFTP({"b1.xml.gz": gz(article(1)), "b2.xml.gz": gz(article(2))}))
+    held = iter([True, True, False])  # start check, before b1, before b2
+    monkeypatch.setattr(mod, "rebuild_lock_held", lambda: next(held))
+    with caplog.at_level(logging.INFO, logger=mod.logger.name):
+        assert run_main([]) == 1
+    assert [u.rsplit("/", 1)[1] for u in ftp.downloads] == ["b1.xml.gz"]
+    c = full_conn(env)
+    assert [r[0] for r in c.execute("SELECT filename FROM processed_files")] == ["b1.xml.gz"]
+    assert count(c, "pubmed", 1) == 1
+    c.close()
+    assert "rebuild lock holder is gone" in caplog.text
