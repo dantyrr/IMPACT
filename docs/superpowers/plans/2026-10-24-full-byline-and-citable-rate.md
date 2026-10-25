@@ -422,6 +422,8 @@ def test_no_official_jif_in_export(tmp_path):
 
 **Runbook.** Each item is checked off with its observed result.
 
+> **Superseded:** run from `docs/superpowers/plans/2026-10-24-citable-rate-runbook.md`, which replaces this list (adds the R1 lock-before-fast-forward order, the gate before apply, the gap catch-up and the final-review steps).
+
 - [ ] `python scripts/rebuild_lock.py hold &` → `status` shows a live `rebuild` holder
 - [ ] `df -h` result recorded. If below 100 GB free, tell the owner before ingesting.
 - [ ] `python scripts/build_pubmed_full.py --sample 12` → report the projected `author_tables_gb`. **Stop if over 20.**
