@@ -30,7 +30,7 @@ Data sources: PubMed Annual Baseline + update files (~40M records) + iCite Open 
 - `python scripts/compute_snapshots.py` — Recompute all rolling IFs + export JSON
 - `python scripts/run_weekly_update.py` — Incremental update (new papers + citations)
 - `python scripts/upload_to_r2.py` — Sync JSON to Cloudflare R2
-- `python scripts/validate_exports.py` — Verify JSON export completeness
+- `python scripts/validate_exports.py [--since YYYY-MM-DD]` — Verify JSON export completeness and v2 shape (fails files older than --since, default today)
 - `sqlite3 data/impact.db` — Query the main database directly
 
 ## Conventions
