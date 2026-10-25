@@ -752,7 +752,7 @@ class IMPACTApp {
             document.getElementById('metric-review-papers-label').textContent = dateRange ? `Review Papers · ${dateRange}` : 'Review Papers';
             document.getElementById('metric-review-pct').textContent = UIHelpers.formatPct(reviewPct);
             document.getElementById('metric-review-pct-label').textContent = 'Review %';
-            this._renderJournalFlags(data.flags);
+            this._renderJournalFlags(data.flags, this._settledMonth(data));
 
             // Reset window/type state for new journal
             this.currentWindow = 'timeseries';
@@ -898,8 +898,29 @@ class IMPACTApp {
         URL.revokeObjectURL(url);
     }
 
-    /** One caveat line per reliability flag, under the journal's metrics row. */
-    _renderJournalFlags(flags) {
+    /**
+     * Month of the point the exporter computed flags on: the latest timeseries
+     * month <= export month minus 12 (journal_flags.settled_point, as_of =
+     * last_updated). Null when it cannot be established.
+     */
+    _settledMonth(data) {
+        const m = /^(\d{4})-(\d{2})/.exec(data?.last_updated || '');
+        if (!m) return null;
+        const idx = Number(m[1]) * 12 + (Number(m[2]) - 1) - 12;
+        const cutoff = `${String(Math.floor(idx / 12)).padStart(4, '0')}-${String(idx % 12 + 1).padStart(2, '0')}`;
+        let best = null;
+        for (const p of data.timeseries || []) {
+            if (p.month <= cutoff && (best === null || p.month > best)) best = p.month;
+        }
+        return best;
+    }
+
+    /**
+     * One caveat line per reliability flag, under the journal's metrics row.
+     * Flags describe the settled window (about 12 months before the latest),
+     * so each line names that window's end month.
+     */
+    _renderJournalFlags(flags, settledMonth) {
         const el = document.getElementById('journal-flags');
         if (!el) return;
         const FLAG_TEXT = {
@@ -909,7 +930,8 @@ class IMPACTApp {
             inferred_types: "10% or more of this window's items were reclassified from PubMed's type (see Methodology).",
         };
         const lines = (flags || []).filter(f => FLAG_TEXT[f]);
-        el.innerHTML = lines.map(f => `<p class="section-note">${UIHelpers.escapeHtml(FLAG_TEXT[f])}</p>`).join('');
+        const prefix = settledMonth ? `In the window ending ${settledMonth}: ` : 'In the latest settled window: ';
+        el.innerHTML = lines.map(f => `<p class="section-note">${UIHelpers.escapeHtml(prefix + FLAG_TEXT[f])}</p>`).join('');
         el.style.display = lines.length ? '' : 'none';
     }
 
