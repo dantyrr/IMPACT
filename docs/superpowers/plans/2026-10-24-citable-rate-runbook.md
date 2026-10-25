@@ -77,7 +77,8 @@ df -h $REPO/data
 
 ```bash
 rm -f data/pubmed_full.sample.db data/pubmed_full.sample.db-wal data/pubmed_full.sample.db-shm
-$PY scripts/build_pubmed_full.py --sample 12 2>&1 | tee logs/build_sample.log; echo "exit $?"
+$PY scripts/build_pubmed_full.py --sample 12 > logs/build_sample.log 2>&1; echo "exit $?"
+tail -20 logs/build_sample.log
 ```
 
 - Record: in-scope papers sampled, bytes per paper, projected
@@ -93,11 +94,14 @@ nohup $PY scripts/build_pubmed_full.py > logs/build_pubmed_full.log 2>&1 &
 tail -f logs/build_pubmed_full.log      # "n / total files (name)"
 ```
 
-The build stops on its own in four cases, and each is safe to re-run because
+The build stops on its own in three cases, and each is safe to re-run because
 it resumes at the first unprocessed file:
 
 - exit 1: the lock holder went away. The log says "rebuild lock holder is
-  gone". Restart the holder (step 0) and re-run.
+  gone". Restart the holder with
+  `nohup $PY $REPO/scripts/rebuild_lock.py hold > $REPO/logs/rebuild_lock.log 2>&1 &`
+  (default lock path, now that the code is in `$REPO`; do not re-run the
+  step 0 merge) and re-run.
 - exit 3: free disk dropped below 30 GB.
 - exit 4: a file still failed after retries.
 
@@ -173,7 +177,8 @@ $PY scripts/apply_pubmed_full.py --dry-run | tee logs/apply_dry_run.log
 Then apply and checkpoint:
 
 ```bash
-$PY scripts/apply_pubmed_full.py | tee logs/apply.log; echo "exit $?"
+$PY scripts/apply_pubmed_full.py > logs/apply.log 2>&1; echo "exit $?"
+tail -20 logs/apply.log
 sqlite3 data/impact.db "PRAGMA wal_checkpoint(TRUNCATE);"
 ls -l data/impact.db*
 ```
@@ -181,7 +186,7 @@ ls -l data/impact.db*
 - Record: the summary line and class counts. Also record that `impact.db-wal`
   is 0 bytes or absent.
 - Stop if: the exit code is not 0. Exit 1 means the lock holder went away,
-  and the log says so; restart the holder and re-run. Exit 3 means low disk.
+  and the log says so; restart the holder as in step 3 and re-run. Exit 3 means low disk.
   In both cases finished batches are committed.
 
 ## 6. Revise the gate-dependent methodology text (R31)
@@ -280,6 +285,7 @@ DAYS=$(( ( $(date +%s) - $(date -j -f %F 2026-10-19 +%s) ) / 86400 + 3 ))
 echo $DAYS
 $PY scripts/run_weekly_update.py --days $DAYS > logs/catchup.log 2>&1; echo "exit $?"
 grep "matched to tracked journals" logs/catchup.log
+RUN_DATE=<the RUN_DATE recorded in step 7>   # re-set it if this is a new shell
 $PY scripts/validate_exports.py --since $RUN_DATE
 ```
 
