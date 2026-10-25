@@ -19,6 +19,8 @@ Usage:
     python scripts/upload_to_r2.py            # sync changed files only
     python scripts/upload_to_r2.py --dry-run  # show what would change
     python scripts/upload_to_r2.py --force    # re-upload everything
+    python scripts/upload_to_r2.py --prefix X # key prefix (default: config.R2_DATA_PREFIX, "v2")
+    python scripts/upload_to_r2.py --prefix "" # bucket root (legacy layout)
 """
 
 import sys
@@ -39,7 +41,7 @@ except ImportError:
 
 from src.pipeline.config import (
     R2_ACCOUNT_ID, R2_BUCKET_NAME, R2_ACCESS_KEY_ID,
-    R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL, WEBSITE_DATA_DIR,
+    R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL, R2_DATA_PREFIX, WEBSITE_DATA_DIR,
 )
 
 logging.basicConfig(
@@ -73,10 +75,21 @@ def get_client():
     )
 
 
-def list_remote_etags(client) -> dict:
+def normalize_prefix(prefix: str) -> str:
+    return (prefix or "").strip("/")
+
+
+def make_key(prefix: str, rel: str) -> str:
+    return f"{prefix}/{rel}" if prefix else rel
+
+
+def list_remote_etags(client, prefix: str = "") -> dict:
     etags = {}
     paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=R2_BUCKET_NAME):
+    kwargs = {"Bucket": R2_BUCKET_NAME}
+    if prefix:
+        kwargs["Prefix"] = prefix + "/"
+    for page in paginator.paginate(**kwargs):
         for obj in page.get("Contents", []):
             etags[obj["Key"]] = obj["ETag"].strip('"').lower()
     return etags
@@ -87,12 +100,17 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--prefix", default=None,
+                        help="key prefix in the bucket (default: config R2_DATA_PREFIX; "
+                             "'' = bucket root)")
     args = parser.parse_args()
+    prefix = normalize_prefix(R2_DATA_PREFIX if args.prefix is None else args.prefix)
 
     data_dir = Path(WEBSITE_DATA_DIR)
     local_files = sorted(data_dir.rglob("*.json"))
     logger.info(f"Bucket:      {R2_BUCKET_NAME}")
     logger.info(f"Public URL:  {R2_PUBLIC_URL}")
+    logger.info(f"Key prefix:  {prefix or '(bucket root)'}")
     logger.info(f"Local files: {len(local_files):,} JSON files")
 
     client = get_client()
@@ -100,12 +118,12 @@ def main():
     remote_etags = {}
     if not args.force:
         logger.info("Fetching remote file list...")
-        remote_etags = list_remote_etags(client)
+        remote_etags = list_remote_etags(client, prefix)
         logger.info(f"  {len(remote_etags):,} files already on R2")
 
     to_upload = []
     for path in local_files:
-        key = path.relative_to(data_dir).as_posix()
+        key = make_key(prefix, path.relative_to(data_dir).as_posix())
         if md5_hex(path) != remote_etags.get(key, ""):
             to_upload.append((path, key))
 
@@ -146,7 +164,7 @@ def main():
 
     logger.info(f"Done: {uploaded} uploaded, {errors} errors")
     if R2_PUBLIC_URL:
-        logger.info(f"Live at: {R2_PUBLIC_URL}/index.json")
+        logger.info(f"Live at: {R2_PUBLIC_URL}/{make_key(prefix, 'index.json')}")
 
 
 if __name__ == "__main__":

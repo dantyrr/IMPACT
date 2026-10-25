@@ -24,6 +24,8 @@ R2_BUCKET_NAME       = os.getenv("R2_BUCKET_NAME", "impact-data")
 R2_ACCESS_KEY_ID     = os.getenv("R2_ACCESS_KEY_ID", "")
 R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
 R2_PUBLIC_URL        = os.getenv("R2_PUBLIC_URL", "")
+# Versioned key prefix for served data. docs/js/data-loader.js R2_DATA_PREFIX mirrors this.
+R2_DATA_PREFIX       = "v2"
 
 # --- Rate Limits (requests per second) ---
 PUBMED_RATE_LIMIT = 10 if PUBMED_API_KEY else 3
