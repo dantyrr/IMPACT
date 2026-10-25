@@ -27,7 +27,7 @@ We are actively building out the site to illustrate all of these issues. The goa
 
 ## What IMPACT Does
 
-IMPACT computes a rolling monthly citation rate — equivalent to the JIF but updated every month instead of annually — from public data, for all 8,000+ PubMed-indexed journals going back to 2012. The results are browsable on a free website with interactive charts, and all code and data are open source.
+IMPACT computes a rolling monthly citation rate — a monthly analogue of the JIF, defined in [METHODOLOGY.md](METHODOLOGY.md) — from public data, for all 8,000+ PubMed-indexed journals going back to 2005. The results are browsable on a free website with interactive charts, and all code and data are open source.
 
 ---
 
@@ -39,8 +39,8 @@ IMPACT uses two public bulk datasets, each downloaded once, plus two APIs for on
 
 | Source | What it provides | Size |
 |--------|-----------------|------|
-| [PubMed Annual Baseline](https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/) | Every paper indexed by PubMed (~40 million records): title, journal ISSN, publication year and month, article type, author names and affiliations, DOI | ~25 GB compressed |
-| [iCite Open Citation Collection](https://icite.od.nih.gov/stats) | For each paper, the list of PMIDs that cite it (`cited_by`) and the list of PMIDs it references (`references`). Also whether iCite classifies it as a research article. | ~10 GB |
+| [PubMed Annual Baseline](https://ftp.ncbi.nlm.nih.gov/pubmed/baseline/) | Every paper indexed by PubMed (~40 million records): title, journal ISSN, publication year and month, publication types, abstract presence, page count, author names and affiliations, DOI | ~25 GB compressed |
+| [iCite Open Citation Collection](https://icite.od.nih.gov/stats) | For each paper, the list of PMIDs that cite it (`cited_by`) and the list of PMIDs it references (`references`). Also whether iCite classifies it as a research article (used only as evidence when classifying front matter; it does not set the research flag). | ~10 GB |
 
 These two datasets contain everything needed to compute citation rates for any journal. The PubMed baseline tells us *what was published and when*. The iCite collection tells us *what cited what*.
 
@@ -57,13 +57,15 @@ The bulk downloads cover the full history. The APIs handle the incremental weekl
 
 ## How the Rolling Citation Rate Is Calculated
 
-The standard 2-year Journal Impact Factor works like this:
+The full definition, including document classes, windows, flags and differences from Clarivate's metric, is in [METHODOLOGY.md](METHODOLOGY.md). In short, the standard 2-year Journal Impact Factor works like this:
 
 > JIF(2025) = citations received in 2025 by papers published in 2023–2024 / number of papers published in 2023–2024
 
 IMPACT computes the same thing, but **monthly** instead of annually:
 
-> Rolling IF(March 2025) = citations received in the 12 months ending March 2025, by papers published in the 24 months before that 12-month window / number of those papers
+> Rolling IF(March 2025) = citations received in the 12 months ending March 2025, to citable items (research, review, case report, guideline) published in the 24 months before that 12-month window / number of those citable items
+
+Unlike Clarivate's JIF, the numerator counts only citations to citable items.
 
 ```
 Example for March 2025:
@@ -86,7 +88,7 @@ Three window variants are available:
 
 This calculation requires knowing the **month** each citation occurred — meaning the month the *citing* paper was published. But iCite's bulk data only provides the *year* of each paper, not the month. Without months, all citations would pile up in a single annual bucket, defeating the purpose of monthly tracking.
 
-The solution: every citing paper is also a PubMed record, and PubMed records include publication month. So after loading citations from iCite, we look up each citing paper's month from `pubmed_bulk.db` (which has month-level dates for all 40M records). The small number of very new citing papers not yet in the bulk download are resolved via the PubMed API.
+The solution: every citing paper is also a PubMed record, and PubMed records include publication month. So after loading citations from iCite, we look up each citing paper's month from `pubmed_full.db` (which has month-level dates for all 40M records). The small number of very new citing papers not yet in the bulk download are resolved via the PubMed API.
 
 This is what turns a yearly citation dataset into a monthly one.
 
@@ -99,7 +101,7 @@ This is what turns a yearly citation dataset into a monthly one.
 Download and index both bulk datasets locally:
 
 ```bash
-python scripts/download_pubmed_bulk.py    # → data/pubmed_bulk.db  (~40M records)
+python scripts/build_pubmed_full.py       # → data/pubmed_full.db  (~40M records)
 python scripts/download_icite_bulk.py     # → data/icite_bulk.db
 ```
 
@@ -107,9 +109,9 @@ python scripts/download_icite_bulk.py     # → data/icite_bulk.db
 
 For each of the ~8,500 journals found in the PubMed baseline:
 
-1. **Papers** — Query `pubmed_bulk.db` by journal ISSN to get all papers (title, date, authors, type)
+1. **Papers** — Query `pubmed_full.db` by journal ISSN to get all papers (title, date, authors, type)
 2. **Citations** — Query `icite_bulk.db` to get the `cited_by` list for each paper
-3. **Citation months** — Look up the publication month of each citing paper in `pubmed_bulk.db`
+3. **Citation months** — Look up the publication month of each citing paper in `pubmed_full.db`
 4. **Store** — Write everything to `data/impact.db` (the main SQLite database)
 
 ```bash
@@ -124,7 +126,7 @@ No API calls are made during bulk processing — everything comes from the local
 
 ### Step 3: Compute snapshots and export
 
-For each journal, compute the rolling citation rate at every month from 2012 to present, then export as JSON:
+For each journal, compute the rolling citation rate at every month from 2005 to present, then export as JSON:
 
 ```bash
 python scripts/compute_snapshots.py --workers 4
@@ -199,9 +201,11 @@ IMPACT/
 │   ├── pubmed_fetcher.py      # PubMed E-utilities (for weekly updates + live search)
 │   ├── icite_fetcher.py       # iCite API client
 │   ├── impact_calculator.py   # Rolling IF computation engine
+│   ├── doc_class.py           # Document classes (which items are citable)
+│   ├── journal_flags.py       # Journal reliability flags
 │   └── json_exporter.py       # JSON export (timeseries, authors, papers, geography)
 ├── scripts/
-│   ├── download_pubmed_bulk.py    # One-time: PubMed baseline → pubmed_bulk.db
+│   ├── build_pubmed_full.py       # One-time: PubMed baseline + updates → pubmed_full.db
 │   ├── download_icite_bulk.py     # One-time: iCite bulk → icite_bulk.db
 │   ├── run_pipeline_bulk.py       # Per-journal processing from bulk DBs
 │   ├── run_all_journals.py        # Parallel orchestrator for all journals
@@ -220,7 +224,7 @@ IMPACT/
 │       └── journal-picker.js      # Searchable journal selector
 └── data/                          # Local only (gitignored)
     ├── impact.db                  # Main database (papers, citations, journals)
-    ├── pubmed_bulk.db             # PubMed baseline (~40M records)
+    ├── pubmed_full.db             # PubMed baseline + updates (~40M records)
     ├── icite_bulk.db              # iCite citation links
     ├── pmid_dates.db              # PMID → publication date cache
     └── journal_registry.json      # All ~8,500 PubMed-indexed journals

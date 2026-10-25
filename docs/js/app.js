@@ -78,6 +78,14 @@ class IMPACTApp {
                 this.showSection(sectionId);
             });
         });
+        // In-page links between sections that are not in the nav (About <-> Methodology)
+        document.querySelectorAll('a[data-goto-section]').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.showSection(link.dataset.gotoSection);
+                window.scrollTo(0, 0);
+            });
+        });
     }
 
     showSection(sectionId) {
@@ -2400,6 +2408,7 @@ class IMPACTApp {
 
     _handleDeepLink() {
         const hash = location.hash;
+        if (hash === '#methodology') { this.showSection('methodology'); return; }
         if (!hash.startsWith('#author/')) return;
 
         const rest = hash.slice('#author/'.length);

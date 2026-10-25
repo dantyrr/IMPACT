@@ -3,7 +3,7 @@
 ## Project Overview
 Open-source system computing monthly rolling citation rates for 8,500+ PubMed-indexed journals.
 Live site: https://dantyrr.github.io/IMPACT
-Data sources: PubMed Annual Baseline (~40M records) + iCite Open Citation Collection.
+Data sources: PubMed Annual Baseline + update files (~40M records) + iCite Open Citation Collection.
 
 ## Architecture
 - **Backend**: Python 3.11+ pipeline → SQLite (WAL mode) → JSON export
@@ -12,14 +12,14 @@ Data sources: PubMed Annual Baseline (~40M records) + iCite Open Citation Collec
 - **CI/CD**: GitHub Actions (monthly data pipeline + deploy-pages)
 
 ## Key Directories
-- `src/pipeline/` — Core modules: config, db_manager, pubmed_fetcher, icite_fetcher, impact_calculator, json_exporter
+- `src/pipeline/` — Core modules: config, db_manager, pubmed_fetcher, icite_fetcher, impact_calculator, doc_class, journal_flags, pubmed_xml, json_exporter
 - `scripts/` — Standalone pipeline scripts (download, process, compute, upload)
 - `docs/` — Static SPA (index.html, js/, css/, data/)
 - `docs/js/` — app.js (main controller), chart-manager.js, data-loader.js, journal-picker.js, ui-helpers.js
-- `data/` — Local SQLite databases (gitignored): impact.db, pubmed_bulk.db, pmid_dates.db
+- `data/` — Local SQLite databases (gitignored): impact.db, pubmed_full.db, pmid_dates.db
 
 ## Data Flow
-1. Bulk download: PubMed baseline + iCite → local SQLite DBs
+1. Bulk build: `build_pubmed_full.py` (PubMed baseline + updates → pubmed_full.db) + iCite → local SQLite DBs
 2. Per-journal processing: `run_pipeline_bulk.py` → impact.db
 3. Snapshot computation: `compute_snapshots.py` → rolling IF at every month
 4. JSON export → `docs/data/` + Cloudflare R2
@@ -79,4 +79,4 @@ two commands, using repository secrets for `PUBMED_API_KEY`, `R2_ACCOUNT_ID`, `R
 - iCite batch API max 200 PMIDs per request (414 errors if exceeded)
 - SQLite WAL mode needed for concurrent access from parallel workers
 - `docs/data/journals/` and `docs/data/papers/` are gitignored — data served from R2 in production
-- Rolling IF formula uses 24-mo paper window + 12-mo citation window (see METHODOLOGY.md)
+- Rolling IF = citations (12-mo window) to citable items / citable items (24-mo paper window); citable = research, review, case_report, guideline (`doc_class.py`). iCite no longer sets the research flag. See METHODOLOGY.md

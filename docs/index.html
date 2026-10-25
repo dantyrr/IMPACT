@@ -671,24 +671,27 @@
                 For each target month, IMPACT computes:
             </p>
             <div class="formula-box">
-                Citation Rate = Citations received in 12-month window / Research articles published in preceding 24-month window
+                Citation Rate = Citations in the 12-month window to citable items published in the preceding 24-month window / Citable items published in that 24-month window
             </div>
             <p>
-                This mirrors the official JIF methodology but uses a rolling monthly window
-                instead of a fixed calendar year, providing more timely and granular metrics.
+                Citable items are research articles, reviews, case reports and guidelines.
+                Numerator and denominator cover the same set of papers. Clarivate's
+                Journal Impact Factor also counts citations to non-citable items such as
+                editorials and letters in its numerator; IMPACT does not.
+                <a href="#methodology" data-goto-section="methodology">Read the full methodology</a>.
             </p>
 
             <h3>Data Sources</h3>
             <p>
-                <strong>PubMed Bulk Data</strong> — 40M papers with metadata, author affiliations, and publication dates.<br>
-                <strong>NIH iCite Open Citation Collection</strong> — 893M citation links, downloaded and processed locally.
+                <strong>PubMed baseline and update files</strong> — ~40M records with metadata, author affiliations, and publication dates.<br>
+                <strong>NIH iCite Open Citation Collection</strong> — citation links between PubMed papers, downloaded and processed locally.
             </p>
 
-            <h3>Review-Excluded Citation Rate</h3>
+            <h3>Research-Only Citation Rate</h3>
             <p>
-                IMPACT also computes a citation rate excluding review articles from both the numerator
-                and denominator. This helps detect "review inflation" — when journals boost
-                their metrics by publishing highly-cited review articles.
+                IMPACT also computes a citation rate over research articles only, excluding reviews
+                from both the numerator and denominator. The gap between the two rates shows how much
+                of a journal's rate depends on reviews.
             </p>
 
             <h3>Tracked Journals</h3>
@@ -719,6 +722,84 @@
         </div>
     </section>
 
+    <!-- ============ METHODOLOGY ============ -->
+    <section id="methodology" class="section">
+        <h2>Methodology</h2>
+        <div class="about-content">
+            <p><a href="#about" data-goto-section="about">&larr; Back to About</a></p>
+
+            <h3>The citation rate</h3>
+            <div class="formula-box">
+                Rate(M) = citations in the 12 months ending M, to citable items in the paper window / citable items in the paper window
+            </div>
+            <p>
+                Citable items are the classes <em>research</em>, <em>review</em>, <em>case report</em> and
+                <em>guideline</em>. A citation to any other kind of item is not counted, and those items
+                are not in the denominator. Three paper windows are computed:
+            </p>
+            <table class="data-table">
+                <thead><tr><th>Variant</th><th>Paper window</th><th>Published (months before M)</th></tr></thead>
+                <tbody>
+                    <tr><td>24-month (default)</td><td>24 months, no gap</td><td>13 to 36</td></tr>
+                    <tr><td>12-month</td><td>12 months, no gap</td><td>13 to 24</td></tr>
+                    <tr><td>5-year (years 2-6)</td><td>60 months, after a 12-month gap</td><td>25 to 84</td></tr>
+                </tbody>
+            </table>
+
+            <h3>Difference from Clarivate</h3>
+            <p>
+                Clarivate's numerator also counts citations to non-citable items (editorials, letters);
+                its denominator does not. IMPACT's numerator counts only citations to citable items.
+                IMPACT uses different data, classification and windows, and makes no comparison to
+                Clarivate's published values.
+            </p>
+
+            <h3>Classifying items</h3>
+            <p>
+                PubMed's full publication-type list is read for each paper. The first match in this
+                order sets the class: erratum or retraction notice, guideline, review (including
+                systematic review and meta-analysis), case report, editorial, letter (Letter, Comment,
+                Editorial Comment), other (News, Biography, Obituary, Interview, Portrait, Congress),
+                and finally research (Journal Article).
+            </p>
+            <p>
+                A paper PubMed types only as a journal article, with no abstract, is reclassified as
+                commentary (not citable) if it has two pages or fewer, or if iCite says it is not a
+                research article. iCite's flag is evidence for this rule only; it does not set the
+                research class by itself.
+            </p>
+            <p>
+                Items PubMed types as "Letter" are not counted as citable. This undercounts short
+                research formats such as research letters at journals that publish them under that type.
+            </p>
+
+            <h3>Reliability flags</h3>
+            <p>
+                Computed on the latest month whose 12-month citation window ended at least 12 months ago:
+                fewer than 20 research items; fewer than 15 review items; reviews at least 50% of
+                citable items; at least 10% of papers with an inferred class.
+            </p>
+
+            <h3>Dates and citation months</h3>
+            <p>
+                A paper is dated by its electronic publication date when PubMed records one, otherwise
+                its issue date; a missing month is set to June. iCite gives only the year of each
+                citation, so the month is taken from the citing paper's PubMed record.
+            </p>
+
+            <h3>Authors and geography</h3>
+            <p>
+                Before about 2014, PubMed recorded only the first author's affiliation, so last-author
+                and country counts for earlier years are incomplete. One affiliation parser now produces
+                all countries, so Geography values may differ from earlier releases.
+            </p>
+            <p>
+                The complete document, with the code locations for every rule, is
+                <a href="https://github.com/dantyrr/IMPACT/blob/main/METHODOLOGY.md" target="_blank" rel="noopener">METHODOLOGY.md on GitHub</a>.
+            </p>
+        </div>
+    </section>
+
 </main>
 
 <footer>
@@ -739,7 +820,7 @@
 <script src="js/chart-manager.js?v=6"></script>
 <script src="js/ui-helpers.js?v=3"></script>
 <script src="js/journal-picker.js?v=3"></script>
-<script src="js/app.js?v=36"></script>
+<script src="js/app.js?v=37"></script>
 
 </body>
 </html>
