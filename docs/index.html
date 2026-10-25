@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IMPACT — Studying Publication Bias, Impact Factor Inflation &amp; H-Index Gaming</title>
-    <link rel="stylesheet" href="css/style.css?v=8">
+    <link rel="stylesheet" href="css/style.css?v=9">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -51,9 +51,13 @@
                     <div id="jc-type-checkboxes" class="checkbox-grid" style="margin-bottom:0;">
                         <label><input type="checkbox" value="research" checked> Research</label>
                         <label><input type="checkbox" value="review"> Reviews</label>
+                        <label><input type="checkbox" value="case_report"> Case Reports</label>
+                        <label><input type="checkbox" value="guideline"> Guidelines</label>
                         <label><input type="checkbox" value="editorial"> Editorials</label>
                         <label><input type="checkbox" value="letter"> Letters</label>
+                        <label><input type="checkbox" value="erratum"> Errata</label>
                         <label><input type="checkbox" value="other"> Other</label>
+                        <label><input type="checkbox" value="commentary"> Commentary</label>
                     </div>
                 </div>
                 <div class="chart-controls">
@@ -161,12 +165,20 @@
 
             <div class="metrics-row">
                 <div class="metric-card">
+                    <span class="metric-value" id="metric-citable-rate">—</span>
+                    <span class="metric-label" id="metric-citable-rate-label">Citation Rate (citable items)</span>
+                </div>
+                <div class="metric-card">
                     <span class="metric-value" id="metric-research-rate">—</span>
                     <span class="metric-label" id="metric-research-rate-label">Research Rate</span>
                 </div>
                 <div class="metric-card">
                     <span class="metric-value" id="metric-review-rate">—</span>
                     <span class="metric-label" id="metric-review-rate-label">Review Rate</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-value" id="metric-citable-papers">—</span>
+                    <span class="metric-label" id="metric-citable-papers-label">Citable Items</span>
                 </div>
                 <div class="metric-card">
                     <span class="metric-value" id="metric-research-papers">—</span>
@@ -181,6 +193,7 @@
                     <span class="metric-label" id="metric-review-pct-label">Review %</span>
                 </div>
             </div>
+            <div id="journal-flags" style="display:none;"></div>
 
             <div class="chart-controls">
                 <span class="chart-controls-label">Window:</span>
@@ -196,9 +209,13 @@
                 <div id="type-checkboxes" class="checkbox-grid" style="margin-bottom:0;">
                     <label><input type="checkbox" value="research" checked> Research</label>
                     <label><input type="checkbox" value="review"> Reviews</label>
+                    <label><input type="checkbox" value="case_report"> Case Reports</label>
+                    <label><input type="checkbox" value="guideline"> Guidelines</label>
                     <label><input type="checkbox" value="editorial"> Editorials</label>
                     <label><input type="checkbox" value="letter"> Letters</label>
+                    <label><input type="checkbox" value="erratum"> Errata</label>
                     <label><input type="checkbox" value="other"> Other</label>
+                    <label><input type="checkbox" value="commentary"> Commentary</label>
                 </div>
             </div>
             <div class="chart-controls">
@@ -244,9 +261,13 @@
             <div id="composition-type-checkboxes" class="checkbox-grid" style="display:none; margin-bottom: 0.5rem;">
                 <label><input type="checkbox" value="research" checked> Research</label>
                 <label><input type="checkbox" value="review" checked> Reviews</label>
+                <label><input type="checkbox" value="case_report" checked> Case Reports</label>
+                <label><input type="checkbox" value="guideline" checked> Guidelines</label>
                 <label><input type="checkbox" value="editorial" checked> Editorials</label>
                 <label><input type="checkbox" value="letter" checked> Letters</label>
+                <label><input type="checkbox" value="erratum" checked> Errata</label>
                 <label><input type="checkbox" value="other" checked> Other</label>
+                <label><input type="checkbox" value="commentary" checked> Commentary</label>
                 <label style="margin-left:1rem;">Bin:
                     <select id="composition-bin-select" style="font-size:0.85rem;">
                         <option value="1" selected>Monthly</option>
@@ -821,8 +842,8 @@
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-<script src="js/data-loader.js?v=6"></script>
-<script src="js/chart-manager.js?v=6"></script>
+<script src="js/data-loader.js?v=7"></script>
+<script src="js/chart-manager.js?v=7"></script>
 <script src="js/ui-helpers.js?v=3"></script>
 <script src="js/journal-picker.js?v=3"></script>
 <script src="js/app.js?v=37"></script>

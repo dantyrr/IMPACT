@@ -3,6 +3,26 @@
  * Wraps Chart.js for consistent chart creation and styling.
  */
 
+/**
+ * Article-type categories, in display order (commentary last). Same set as
+ * src/pipeline/doc_class.py. Citable items (the rate's denominator) are
+ * research, review, case_report and guideline.
+ */
+const DOC_CATEGORIES = ['research', 'review', 'case_report', 'guideline',
+                        'editorial', 'letter', 'erratum', 'other', 'commentary'];
+const CITABLE_CATEGORIES = ['research', 'review', 'case_report', 'guideline'];
+const DOC_CATEGORY_LABELS = {
+    research: 'Research', review: 'Reviews', case_report: 'Case Reports',
+    guideline: 'Guidelines', editorial: 'Editorials', letter: 'Letters',
+    erratum: 'Errata', other: 'Other', commentary: 'Commentary',
+};
+// Dash patterns for line charts where colour encodes the journal.
+const DOC_CATEGORY_DASHES = {
+    research: [8, 4], review: [4, 4], case_report: [6, 2, 2, 2],
+    guideline: [10, 3, 2, 3, 2, 3], editorial: [2, 2], letter: [8, 4, 2, 4],
+    erratum: [1, 4], other: [12, 3], commentary: [3, 6],
+};
+
 class ChartManager {
     constructor() {
         this.charts = {};
@@ -26,7 +46,7 @@ class ChartManager {
      * Create a journal citation rate time series chart.
      * rateLabel: label shown on the legend (e.g. 'Citation Rate (Research)')
      */
-    createJournalChart(canvasId, timeseries, officialJif, rateLabel = 'Citation Rate', beginAtZero = false) {
+    createJournalChart(canvasId, timeseries, rateLabel = 'Citation Rate', beginAtZero = false) {
         const ctx = document.getElementById(canvasId);
         if (!ctx) return;
 
@@ -50,20 +70,6 @@ class ChartManager {
                 pointHoverRadius: 5,
             }
         ];
-
-        // Official JIF reference line
-        if (officialJif) {
-            datasets.push({
-                label: `Official JIF 2024 (${officialJif})`,
-                data: Array(labels.length).fill(officialJif),
-                borderColor: '#e74c3c',
-                borderWidth: 1.5,
-                borderDash: [10, 5],
-                fill: false,
-                pointRadius: 0,
-                pointHoverRadius: 0,
-            });
-        }
 
         this.charts[canvasId] = new Chart(ctx, {
             type: 'line',
@@ -180,10 +186,46 @@ class ChartManager {
     }
 
     /**
+     * Stacked-area colours per article type (Okabe-Ito; commentary grey, last).
+     */
+    _compositionTypeConfig() {
+        const cfg = (label, color) => {
+            const r = parseInt(color.slice(1, 3), 16);
+            const g = parseInt(color.slice(3, 5), 16);
+            const b = parseInt(color.slice(5, 7), 16);
+            return { label, color, bg: `rgba(${r}, ${g}, ${b}, 0.4)` };
+        };
+        return {
+            research:    cfg('Research Articles', '#0072B2'),
+            review:      cfg('Reviews',           '#7B2D8B'),
+            case_report: cfg('Case Reports',      '#D55E00'),
+            guideline:   cfg('Guidelines',        '#56B4E9'),
+            editorial:   cfg('Editorials',        '#E69F00'),
+            letter:      cfg('Letters',           '#009E73'),
+            erratum:     cfg('Errata',            '#CC79A7'),
+            other:       cfg('Other',             '#7f7f7f'),
+            commentary:  cfg('Commentary',        '#999999'),
+        };
+    }
+
+    /** Papers of one article type in a timeseries point (published that month when available). */
+    _compositionValue(d, type) {
+        const pbt = d.pub_by_type;
+        if (pbt) return pbt[type] || 0;
+        const bt = d.by_type;
+        if (!bt) {
+            if (type === 'research') return d.research || 0;
+            if (type === 'review') return d.reviews || 0;
+            return 0;
+        }
+        return bt[type]?.papers || 0;
+    }
+
+    /**
      * Create a stacked area chart showing paper composition over time.
      * @param {string} canvasId
      * @param {Array} timeseries
-     * @param {string[]} visibleTypes - which types to show (default all 5)
+     * @param {string[]} visibleTypes - which types to show (default all DOC_CATEGORIES)
      */
     createCompositionChart(canvasId, timeseries, visibleTypes, scaleOverrides = {}, binSize = 1) {
         const ctx = document.getElementById(canvasId);
@@ -194,36 +236,10 @@ class ChartManager {
         const startIdx = timeseries.findIndex(d => d.papers > 0);
         const rawData = startIdx >= 0 ? timeseries.slice(startIdx) : timeseries;
 
-        const allTypes = ['research', 'review', 'editorial', 'letter', 'other'];
+        const allTypes = DOC_CATEGORIES;
         const shown = visibleTypes || allTypes;
-
-        const typeConfig = {
-            research:  { label: 'Research Articles', color: this.palette[0], bg: 'rgba(0, 114, 178, 0.4)' },
-            review:    { label: 'Reviews',           color: this.palette[6], bg: 'rgba(123, 45, 139, 0.4)' },
-            editorial: { label: 'Editorials',        color: this.palette[4], bg: 'rgba(230, 159, 0, 0.4)' },
-            letter:    { label: 'Letters',            color: this.palette[2], bg: 'rgba(0, 158, 115, 0.4)' },
-            other:     { label: 'Other',              color: this.palette[7], bg: 'rgba(127, 127, 127, 0.4)' },
-        };
-
-        const getVal = (d, type) => {
-            const pbt = d.pub_by_type;
-            if (pbt) {
-                if (type === 'other') {
-                    return (pbt.other || 0) + (pbt.guideline || 0) + (pbt.case_report || 0);
-                }
-                return pbt[type] || 0;
-            }
-            const bt = d.by_type;
-            if (!bt) {
-                if (type === 'research') return d.research || 0;
-                if (type === 'review') return d.reviews || 0;
-                return 0;
-            }
-            if (type === 'other') {
-                return (bt.other?.papers || 0) + (bt.guideline?.papers || 0) + (bt.case_report?.papers || 0);
-            }
-            return bt[type]?.papers || 0;
-        };
+        const typeConfig = this._compositionTypeConfig();
+        const getVal = (d, type) => this._compositionValue(d, type);
 
         // Aggregate into bins
         const bin = Math.max(1, Math.min(12, binSize || 1));
@@ -319,32 +335,15 @@ class ChartManager {
         if (!ctx) return;
         this._destroy(canvasId);
 
-        const allTypes = ['research', 'review', 'editorial', 'letter', 'other'];
+        const allTypes = DOC_CATEGORIES;
         const shown = visibleTypes || allTypes;
         const bin = Math.max(1, Math.min(12, binSize || 1));
         const binLabels = { 1: 'Monthly', 2: 'Bi-monthly', 3: 'Quarterly', 4: 'Tri-annual', 6: 'Semi-annual', 12: 'Yearly' };
         const periodLabel = binLabels[bin] || 'Monthly';
 
-        const typeLabels = {
-            research: 'Research', review: 'Reviews',
-            editorial: 'Editorials', letter: 'Letters', other: 'Other',
-        };
-        const typeDashes = {
-            research: [8, 4], review: [4, 4],
-            editorial: [2, 2], letter: [8, 4, 2, 4], other: [12, 3],
-        };
-
-        const getVal = (d, type) => {
-            const pbt = d.pub_by_type;
-            if (pbt) {
-                if (type === 'other') return (pbt.other || 0) + (pbt.guideline || 0) + (pbt.case_report || 0);
-                return pbt[type] || 0;
-            }
-            const bt = d.by_type;
-            if (!bt) return type === 'research' ? (d.research || 0) : type === 'review' ? (d.reviews || 0) : 0;
-            if (type === 'other') return (bt.other?.papers || 0) + (bt.guideline?.papers || 0) + (bt.case_report?.papers || 0);
-            return bt[type]?.papers || 0;
-        };
+        const typeLabels = DOC_CATEGORY_LABELS;
+        const typeDashes = DOC_CATEGORY_DASHES;
+        const getVal = (d, type) => this._compositionValue(d, type);
 
         /** Aggregate a timeseries into bins, returning {labels, getData(type)} */
         const binTimeseries = (ts) => {
@@ -378,13 +377,7 @@ class ChartManager {
 
             const { labels, getData } = binTimeseries(ts);
 
-            const typeConfig = {
-                research:  { label: 'Research Articles', color: this.palette[0], bg: 'rgba(0, 114, 178, 0.4)' },
-                review:    { label: 'Reviews',           color: this.palette[6], bg: 'rgba(123, 45, 139, 0.4)' },
-                editorial: { label: 'Editorials',        color: this.palette[4], bg: 'rgba(230, 159, 0, 0.4)' },
-                letter:    { label: 'Letters',            color: this.palette[2], bg: 'rgba(0, 158, 115, 0.4)' },
-                other:     { label: 'Other',              color: this.palette[7], bg: 'rgba(127, 127, 127, 0.4)' },
-            };
+            const typeConfig = this._compositionTypeConfig();
 
             const datasets = allTypes.filter(t => shown.includes(t)).map(type => ({
                 label: typeConfig[type].label,
@@ -803,7 +796,7 @@ class ChartManager {
     /**
      * Yearly article-type mix for one journal.
      *
-     * rows: [{ year, researchPapers, reviewPapers, reviewPct, researchRate, reviewRate }]
+     * rows: [{ year, researchPapers, reviewPapers, typeCounts, reviewPct, researchRate, reviewRate }]
      *
      * Review % and citation rates live on separate axes because they are
      * different units — a shared axis would flatten whichever has the smaller
@@ -908,10 +901,11 @@ class ChartManager {
                             afterBody: (items) => {
                                 const r = rows[items[0].dataIndex];
                                 if (!r) return '';
-                                return [
-                                    `Research papers: ${r.researchPapers.toLocaleString()}`,
-                                    `Review papers: ${r.reviewPapers.toLocaleString()}`,
-                                ];
+                                // Papers published that year, one line per type present
+                                const counts = r.typeCounts || {};
+                                return DOC_CATEGORIES
+                                    .filter(k => counts[k] > 0)
+                                    .map(k => `${DOC_CATEGORY_LABELS[k]}: ${counts[k].toLocaleString()}`);
                             },
                         }
                     }

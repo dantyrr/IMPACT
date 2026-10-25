@@ -76,6 +76,10 @@ class IMPACTApp {
                 e.preventDefault();
                 const sectionId = link.dataset.section;
                 this.showSection(sectionId);
+                // Leaving Methodology: drop its hash so a reload does not reopen it
+                if (location.hash === '#methodology') {
+                    history.replaceState(null, '', location.pathname + location.search);
+                }
             });
         });
         // In-page links between sections that are not in the nav (About <-> Methodology)
@@ -305,14 +309,8 @@ class IMPACTApp {
         chartContainer.style.display = 'block';
 
         // Build series from by_type data
-        const typeLabels = {
-            research: 'Research', review: 'Reviews',
-            editorial: 'Editorials', letter: 'Letters', other: 'Other',
-        };
-        const typeDashes = {
-            research: [8, 4], review: [4, 4],
-            editorial: [2, 2], letter: [8, 4, 2, 4], other: [12, 3],
-        };
+        const typeLabels = DOC_CATEGORY_LABELS;
+        const typeDashes = DOC_CATEGORY_DASHES;
 
         const typeRate = (entry, typeKey) => {
             const bt = entry.by_type && entry.by_type[typeKey];
@@ -474,14 +472,13 @@ class IMPACTApp {
         const ts = data.timeseries || [];
         if (!ts.length) return [];
 
-        const OTHER_KEYS = ['editorial', 'letter', 'other', 'guideline', 'case_report'];
         const byYear = new Map();
 
         for (const entry of ts) {
             const year = parseInt(entry.month.slice(0, 4), 10);
             if (!byYear.has(year)) {
                 byYear.set(year, {
-                    year, researchPapers: 0, reviewPapers: 0, otherPapers: 0,
+                    year, typeCounts: Object.fromEntries(DOC_CATEGORIES.map(k => [k, 0])),
                     resRateSum: 0, resRateN: 0, revRateSum: 0, revRateN: 0, months: 0,
                 });
             }
@@ -489,9 +486,7 @@ class IMPACTApp {
             y.months++;
 
             const pbt = entry.pub_by_type || {};
-            y.researchPapers += pbt.research || 0;
-            y.reviewPapers += pbt.review || 0;
-            for (const k of OTHER_KEYS) y.otherPapers += pbt[k] || 0;
+            for (const k of DOC_CATEGORIES) y.typeCounts[k] += pbt[k] || 0;
 
             const bt = entry.by_type || {};
             if (bt.research && bt.research.papers > 0) {
@@ -508,14 +503,15 @@ class IMPACTApp {
         const rows = [...byYear.values()]
             .sort((a, b) => a.year - b.year)
             .map(y => {
-                const total = y.researchPapers + y.reviewPapers + y.otherPapers;
+                const c = y.typeCounts;
+                const total = DOC_CATEGORIES.reduce((a, k) => a + c[k], 0);
                 return {
                     year: y.year,
-                    researchPapers: y.researchPapers,
-                    reviewPapers: y.reviewPapers,
-                    otherPapers: y.otherPapers,
+                    typeCounts: c,
+                    researchPapers: c.research,
+                    reviewPapers: c.review,
                     totalPapers: total,
-                    reviewPct: total > 0 ? (y.reviewPapers / total * 100) : null,
+                    reviewPct: total > 0 ? (c.review / total * 100) : null,
                     researchRate: y.resRateN > 0 ? y.resRateSum / y.resRateN : null,
                     reviewRate: y.revRateN > 0 ? y.revRateSum / y.revRateN : null,
                     partial: y.year >= thisYear || y.months < 12,
@@ -552,8 +548,8 @@ class IMPACTApp {
 
         const fmtPct = v => v == null ? '—' : `${v.toFixed(1)}%`;
         const fmtRate = v => v == null ? '—' : v.toFixed(2);
-        const header = ['Year', 'Research Rate', 'Review Rate', 'Research Papers',
-                        'Review Papers', 'Other', 'Total', 'Review %'];
+        const header = ['Year', 'Research Rate', 'Review Rate',
+                        ...DOC_CATEGORIES.map(k => DOC_CATEGORY_LABELS[k]), 'Total', 'Review %'];
 
         tableEl.innerHTML =
             `<thead><tr>${header.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>` +
@@ -565,9 +561,7 @@ class IMPACTApp {
                     <td>${yearCell}</td>
                     <td>${fmtRate(r.researchRate)}</td>
                     <td>${fmtRate(r.reviewRate)}</td>
-                    <td>${r.researchPapers.toLocaleString()}</td>
-                    <td>${r.reviewPapers.toLocaleString()}</td>
-                    <td>${r.otherPapers.toLocaleString()}</td>
+                    ${DOC_CATEGORIES.map(k => `<td>${r.typeCounts[k].toLocaleString()}</td>`).join('')}
                     <td>${r.totalPapers.toLocaleString()}</td>
                     <td>${fmtPct(r.reviewPct)}</td>
                 </tr>`;
@@ -587,13 +581,13 @@ class IMPACTApp {
 
     _downloadYearlyTypesCSV(data) {
         const rows = this._yearlyTypeRows || [];
-        const header = ['year', 'research_rate', 'review_rate', 'research_papers',
-                        'review_papers', 'other_papers', 'total_papers', 'review_pct', 'partial_year'];
+        const header = ['year', 'research_rate', 'review_rate',
+                        ...DOC_CATEGORIES.map(k => `${k}_papers`), 'total_papers', 'review_pct', 'partial_year'];
         const lines = [header.join(',')].concat(rows.map(r => [
             r.year,
             r.researchRate == null ? '' : r.researchRate.toFixed(4),
             r.reviewRate == null ? '' : r.reviewRate.toFixed(4),
-            r.researchPapers, r.reviewPapers, r.otherPapers, r.totalPapers,
+            ...DOC_CATEGORIES.map(k => r.typeCounts[k]), r.totalPapers,
             r.reviewPct == null ? '' : r.reviewPct.toFixed(2),
             r.partial ? 'yes' : 'no',
         ].join(',')));
@@ -606,6 +600,49 @@ class IMPACTApp {
         URL.revokeObjectURL(url);
     }
 
+    /**
+     * Headline numbers for a journal's metric cards, from its 24-month timeseries.
+     * Rates for research and reviews are averaged over the last 24 snapshots; paper
+     * counts come from the latest snapshot's window. The headline rate is the
+     * exported rolling_if: citations to citable items / citable items.
+     */
+    _journalSummary(j) {
+        const ts = j.timeseries || [];
+        const last24 = ts.slice(-24);
+        const lastEntry = ts.length > 0 ? ts[ts.length - 1] : null;
+        const bt = lastEntry && lastEntry.by_type ? lastEntry.by_type : {};
+
+        let resRateSum = 0, resRateN = 0;
+        let revRateSum = 0, revRateN = 0;
+        for (const entry of last24) {
+            const ebt = entry.by_type || {};
+            if (ebt.research && ebt.research.papers > 0) {
+                resRateSum += ebt.research.citations / ebt.research.papers;
+                resRateN++;
+            }
+            if (ebt.review && ebt.review.papers > 0) {
+                revRateSum += ebt.review.citations / ebt.review.papers;
+                revRateN++;
+            }
+        }
+
+        const papersOf = k => (bt[k] ? bt[k].papers || 0 : 0);
+        const researchPapers = papersOf('research');
+        const reviewPapers = papersOf('review');
+        const totalPapers = DOC_CATEGORIES.reduce((a, k) => a + papersOf(k), 0);
+        const citablePapers = lastEntry && lastEntry.citable_papers !== undefined
+            ? lastEntry.citable_papers
+            : CITABLE_CATEGORIES.reduce((a, k) => a + papersOf(k), 0);
+        return {
+            lastEntry,
+            rate: lastEntry ? lastEntry.rolling_if : null,
+            avgResRate: resRateN > 0 ? resRateSum / resRateN : null,
+            avgRevRate: revRateN > 0 ? revRateSum / revRateN : null,
+            researchPapers, reviewPapers, totalPapers, citablePapers,
+            reviewPct: totalPapers > 0 ? (reviewPapers / totalPapers * 100) : null,
+        };
+    }
+
     _renderJcMetrics(journalsData) {
         const container = document.getElementById('jc-metrics-container');
         if (!container) return;
@@ -614,44 +651,20 @@ class IMPACTApp {
         const colorMap = this.jcPicker.getColorMap();
 
         container.innerHTML = journalsData.map((j, jIdx) => {
-            const ts24 = j.timeseries || [];
-            const last24 = ts24.slice(-24);
-            const lastEntry = ts24.length > 0 ? ts24[ts24.length - 1] : null;
-            const bt = lastEntry && lastEntry.by_type ? lastEntry.by_type : {};
-
-            let resRateSum = 0, resRateN = 0;
-            let revRateSum = 0, revRateN = 0;
-            for (const entry of last24) {
-                const ebt = entry.by_type || {};
-                if (ebt.research && ebt.research.papers > 0) {
-                    resRateSum += ebt.research.citations / ebt.research.papers;
-                    resRateN++;
-                }
-                if (ebt.review && ebt.review.papers > 0) {
-                    revRateSum += ebt.review.citations / ebt.review.papers;
-                    revRateN++;
-                }
-            }
-
-            const researchPapers = bt.research ? bt.research.papers : 0;
-            const reviewPapers = bt.review ? bt.review.papers : 0;
-            const totalPapers = researchPapers + reviewPapers
-                + (bt.editorial ? bt.editorial.papers : 0)
-                + (bt.letter ? bt.letter.papers : 0)
-                + (bt.other ? bt.other.papers : 0);
-            const reviewPct = totalPapers > 0 ? (reviewPapers / totalPapers * 100) : null;
-
-            const snapshotMonth = lastEntry ? lastEntry.month : null;
+            const sm = this._journalSummary(j);
+            const snapshotMonth = sm.lastEntry ? sm.lastEntry.month : null;
             const dateRange = this._computeDateRange(snapshotMonth);
             const avgLabel = dateRange ? `24-mo avg · ${dateRange}` : '24-mo avg';
             const color = colorMap[j.slug] || chartManager.palette[jIdx % chartManager.palette.length];
 
             const cards = [
-                [UIHelpers.formatIF(resRateN > 0 ? resRateSum / resRateN : null), `Research Rate (${avgLabel})`],
-                [UIHelpers.formatIF(revRateN > 0 ? revRateSum / revRateN : null), `Review Rate (${avgLabel})`],
-                [UIHelpers.formatInt(researchPapers), dateRange ? `Research Papers · ${dateRange}` : 'Research Papers'],
-                [UIHelpers.formatInt(reviewPapers), dateRange ? `Review Papers · ${dateRange}` : 'Review Papers'],
-                [UIHelpers.formatPct(reviewPct), 'Review %'],
+                [UIHelpers.formatIF(sm.rate), 'Citation Rate (citable items)'],
+                [UIHelpers.formatIF(sm.avgResRate), `Research Rate (${avgLabel})`],
+                [UIHelpers.formatIF(sm.avgRevRate), `Review Rate (${avgLabel})`],
+                [UIHelpers.formatInt(sm.citablePapers), dateRange ? `Citable Items · ${dateRange}` : 'Citable Items'],
+                [UIHelpers.formatInt(sm.researchPapers), dateRange ? `Research Papers · ${dateRange}` : 'Research Papers'],
+                [UIHelpers.formatInt(sm.reviewPapers), dateRange ? `Review Papers · ${dateRange}` : 'Review Papers'],
+                [UIHelpers.formatPct(sm.reviewPct), 'Review %'],
             ].map(([v, l]) =>
                 `<div class="metric-card"><span class="metric-value">${v}</span><span class="metric-label">${l}</span></div>`
             ).join('');
@@ -714,44 +727,21 @@ class IMPACTApp {
             // Title
             document.getElementById('detail-title').textContent = data.journal;
 
-            // Metrics: 24-mo averaged rates from by_type data
+            // Metrics: headline rate from the latest snapshot, 24-mo averaged type rates
             const latest = data.latest || {};
-            const ts24 = data.timeseries || [];
-            const last24 = ts24.slice(-24);
-            const lastEntry = ts24.length > 0 ? ts24[ts24.length - 1] : null;
-            const bt = lastEntry && lastEntry.by_type ? lastEntry.by_type : {};
-
-            // Average research rate over last 24 snapshots
-            let resRateSum = 0, resRateN = 0;
-            let revRateSum = 0, revRateN = 0;
-            for (const entry of last24) {
-                const ebt = entry.by_type || {};
-                if (ebt.research && ebt.research.papers > 0) {
-                    resRateSum += ebt.research.citations / ebt.research.papers;
-                    resRateN++;
-                }
-                if (ebt.review && ebt.review.papers > 0) {
-                    revRateSum += ebt.review.citations / ebt.review.papers;
-                    revRateN++;
-                }
-            }
-            const avgResRate = resRateN > 0 ? resRateSum / resRateN : null;
-            const avgRevRate = revRateN > 0 ? revRateSum / revRateN : null;
-
-            // Paper counts from latest snapshot's by_type
-            const researchPapers = bt.research ? bt.research.papers : 0;
-            const reviewPapers = bt.review ? bt.review.papers : 0;
-            const totalPapers = researchPapers + reviewPapers
-                + (bt.editorial ? bt.editorial.papers : 0)
-                + (bt.letter ? bt.letter.papers : 0)
-                + (bt.other ? bt.other.papers : 0);
-            const reviewPct = totalPapers > 0 ? (reviewPapers / totalPapers * 100) : null;
+            const sm = this._journalSummary(data);
+            const { avgResRate, avgRevRate, researchPapers, reviewPapers, reviewPct } = sm;
 
             // Date range label
-            const snapshotMonth = lastEntry ? lastEntry.month : latest.month;
+            const snapshotMonth = sm.lastEntry ? sm.lastEntry.month : latest.month;
             const dateRange = this._computeDateRange(snapshotMonth);
             const avgLabel = dateRange ? `24-mo avg · ${dateRange}` : '24-mo avg';
 
+            document.getElementById('metric-citable-rate').textContent = UIHelpers.formatIF(sm.rate);
+            document.getElementById('metric-citable-rate-label').textContent =
+                snapshotMonth ? `Citation Rate (citable items) · ${snapshotMonth}` : 'Citation Rate (citable items)';
+            document.getElementById('metric-citable-papers').textContent = UIHelpers.formatInt(sm.citablePapers);
+            document.getElementById('metric-citable-papers-label').textContent = dateRange ? `Citable Items · ${dateRange}` : 'Citable Items';
             document.getElementById('metric-research-rate').textContent = UIHelpers.formatIF(avgResRate);
             document.getElementById('metric-research-rate-label').textContent = `Research Rate (${avgLabel})`;
             document.getElementById('metric-review-rate').textContent = UIHelpers.formatIF(avgRevRate);
@@ -762,6 +752,7 @@ class IMPACTApp {
             document.getElementById('metric-review-papers-label').textContent = dateRange ? `Review Papers · ${dateRange}` : 'Review Papers';
             document.getElementById('metric-review-pct').textContent = UIHelpers.formatPct(reviewPct);
             document.getElementById('metric-review-pct-label').textContent = 'Review %';
+            this._renderJournalFlags(data.flags);
 
             // Reset window/type state for new journal
             this.currentWindow = 'timeseries';
@@ -907,6 +898,21 @@ class IMPACTApp {
         URL.revokeObjectURL(url);
     }
 
+    /** One caveat line per reliability flag, under the journal's metrics row. */
+    _renderJournalFlags(flags) {
+        const el = document.getElementById('journal-flags');
+        if (!el) return;
+        const FLAG_TEXT = {
+            small_research_sample: 'Fewer than 20 research articles in this window, so rates are noisy.',
+            small_review_sample: 'Fewer than 15 reviews in this window, so review rates are noisy.',
+            review_journal: 'Mostly reviews: at least half of citable items are reviews.',
+            inferred_types: "10% or more of this window's items were reclassified from PubMed's type (see Methodology).",
+        };
+        const lines = (flags || []).filter(f => FLAG_TEXT[f]);
+        el.innerHTML = lines.map(f => `<p class="section-note">${UIHelpers.escapeHtml(FLAG_TEXT[f])}</p>`).join('');
+        el.style.display = lines.length ? '' : 'none';
+    }
+
     // ---- Detail series builder ----
 
     /**
@@ -926,20 +932,20 @@ class IMPACTApp {
 
         if (checkedTypes.length === 0) return [];
 
-        const typeLabels = {
-            research: 'Research', review: 'Reviews',
-            editorial: 'Editorials', letter: 'Letters', other: 'Other',
-        };
-        const typeDashes = {
-            research: [8, 4], review: [4, 4],
-            editorial: [2, 2], letter: [8, 4, 2, 4], other: [12, 3],
-        };
+        const typeLabels = DOC_CATEGORY_LABELS;
+        const typeDashes = DOC_CATEGORY_DASHES;
+        // Combined line is palette[0] (blue). Okabe-Ito has fewer hues than there are
+        // series here, so the rarest types also lean on their dash pattern.
         const typeColors = {
-            research: chartManager.palette[1],
-            review: chartManager.palette[2],
-            editorial: chartManager.palette[3],
-            letter: chartManager.palette[4],
-            other: chartManager.palette[5],
+            research: chartManager.palette[1],    // vermilion
+            review: chartManager.palette[2],      // bluish green
+            case_report: chartManager.palette[6], // purple (stands in for yellow)
+            guideline: '#000000',                 // black
+            editorial: chartManager.palette[3],   // sky blue
+            letter: chartManager.palette[4],      // orange
+            erratum: '#F0E442',                   // yellow
+            other: chartManager.palette[5],       // reddish purple
+            commentary: '#999999',                // grey
         };
 
         // Helper: compute rate for a single type from by_type
@@ -1081,7 +1087,7 @@ class IMPACTApp {
 
     _getCompositionVisibleTypes() {
         const container = document.getElementById('composition-type-checkboxes');
-        if (!container) return ['research', 'review', 'editorial', 'letter', 'other'];
+        if (!container) return DOC_CATEGORIES;
         return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
     }
 
@@ -1246,46 +1252,25 @@ class IMPACTApp {
 
     renderComparisonTable(container, journalsData) {
         const rows = journalsData.map(j => {
-            const ts24 = j.timeseries || [];
-            const last24 = ts24.slice(-24);
-            const lastEntry = ts24.length > 0 ? ts24[ts24.length - 1] : null;
-            const bt = lastEntry && lastEntry.by_type ? lastEntry.by_type : {};
-
-            let resRateSum = 0, resRateN = 0;
-            let revRateSum = 0, revRateN = 0;
-            for (const entry of last24) {
-                const ebt = entry.by_type || {};
-                if (ebt.research && ebt.research.papers > 0) {
-                    resRateSum += ebt.research.citations / ebt.research.papers;
-                    resRateN++;
-                }
-                if (ebt.review && ebt.review.papers > 0) {
-                    revRateSum += ebt.review.citations / ebt.review.papers;
-                    revRateN++;
-                }
-            }
-
-            const researchPapers = bt.research ? bt.research.papers : 0;
-            const reviewPapers = bt.review ? bt.review.papers : 0;
-            const totalPapers = researchPapers + reviewPapers
-                + (bt.editorial ? bt.editorial.papers : 0)
-                + (bt.letter ? bt.letter.papers : 0)
-                + (bt.other ? bt.other.papers : 0);
-
+            const sm = this._journalSummary(j);
             return {
                 journal: j.journal,
-                research_rate: resRateN > 0 ? resRateSum / resRateN : null,
-                review_rate: revRateN > 0 ? revRateSum / revRateN : null,
-                research_papers: researchPapers,
-                review_papers: reviewPapers,
-                review_pct: totalPapers > 0 ? (reviewPapers / totalPapers * 100) : null,
+                rate: sm.rate,
+                research_rate: sm.avgResRate,
+                review_rate: sm.avgRevRate,
+                citable_papers: sm.citablePapers,
+                research_papers: sm.researchPapers,
+                review_papers: sm.reviewPapers,
+                review_pct: sm.reviewPct,
             };
         });
 
         const columns = [
             { key: 'journal', label: 'Journal' },
+            { key: 'rate', label: 'Citation Rate (citable items)', format: UIHelpers.formatIF },
             { key: 'research_rate', label: 'Research Rate', format: UIHelpers.formatIF },
             { key: 'review_rate', label: 'Review Rate', format: UIHelpers.formatIF },
+            { key: 'citable_papers', label: 'Citable Items', format: UIHelpers.formatInt },
             { key: 'research_papers', label: 'Research Papers', format: UIHelpers.formatInt },
             { key: 'review_papers', label: 'Review Papers', format: UIHelpers.formatInt },
             { key: 'review_pct', label: 'Review %', format: UIHelpers.formatPct },
@@ -1747,11 +1732,16 @@ class IMPACTApp {
         results.style.display = 'none';
 
         try {
-            const [journalData, seedPapers] = await Promise.all([
+            const [journalData, seedPapers, classes] = await Promise.all([
                 this.journalDataCache[slug]
                     ? Promise.resolve(this.journalDataCache[slug])
                     : dataLoader.loadJournal(slug).then(d => { this.journalDataCache[slug] = d; return d; }),
                 this._fetchICiteBatch(pmids),
+                // Citable / non-citable PMID sets; null if missing, so every seed is "type unknown"
+                dataLoader.loadClasses(slug).catch(e => {
+                    console.warn(`No class list for ${slug}:`, e.message);
+                    return null;
+                }),
             ]);
 
             if (!seedPapers.length) { hint.textContent = 'None of the PMIDs were found in iCite.'; return; }
@@ -1786,7 +1776,7 @@ class IMPACTApp {
                 }
             }
 
-            this._lastInfluenceRenderArgs = [journalData, seedPapers, seedsInJournal, localCyMap, citingPapers, totalCitedBy, papersData];
+            this._lastInfluenceRenderArgs = [journalData, seedPapers, seedsInJournal, localCyMap, citingPapers, totalCitedBy, papersData, classes];
             this._renderInfluenceChart(...this._lastInfluenceRenderArgs);
 
             hint.style.display = 'none';
@@ -1817,7 +1807,14 @@ class IMPACTApp {
     // localSeeds: seeds with exact cy data; iciteSeeds: seeds using iCite cited_by fallback.
     // Each iCite seed contributes independently (additive, handles multi-seed double-counting).
     // windowKey: which timeseries variant is selected (determines paper window bounds).
-    _computeAdjIf(ts, localSeeds, iciteSeeds, citingPapers, localCyMap, windowKey) {
+    // citable: Set of the journal's citable PMIDs (classes.citable). The rate is
+    // citable_citations / citable_papers, so only a citable seed is in it: such a
+    // seed leaves both numerator and denominator. Any other seed (non-citable, or
+    // type unknown) is left in, unchanged.
+    _computeAdjIf(ts, localSeeds, iciteSeeds, citingPapers, localCyMap, windowKey, citable) {
+        const isCitable = s => !!citable && citable.has(Number(s.pmid));
+        localSeeds = localSeeds.filter(isCitable);
+        iciteSeeds = iciteSeeds.filter(isCitable);
         // Paper window parameters: (months, skip) matching backend compute_rolling_if
         const windowParams = {
             'timeseries':      { pw: 24, skip: 0 },
@@ -1870,20 +1867,20 @@ class IMPACTApp {
                 iciteSeedCits += count * seedScale;
             }
 
-            // Denominator: subtract in-journal research seeds published in paper window
-            const allSeeds = [...localSeeds, ...iciteSeeds];
-            let seedResearchInWindow = 0;
-            for (const s of allSeeds) {
-                if (s.is_research_article === 'Yes' || s.is_research_article === true) {
-                    const ord = (s.year || 0) * 12 + 6;
-                    if (ord >= paperWindowStart && ord <= paperWindowEnd) seedResearchInWindow++;
-                }
+            // Denominator: subtract the citable seeds published in the paper window
+            let seedsInWindow = 0;
+            for (const s of [...localSeeds, ...iciteSeeds]) {
+                const ord = (s.year || 0) * 12 + 6;
+                if (ord >= paperWindowStart && ord <= paperWindowEnd) seedsInWindow++;
             }
 
-            const citations = point.citations || 0;
-            const research = point.research || point.papers || 1;
-            return Math.max(0, citations - localSeedCits - iciteSeedCits) /
-                   Math.max(1, research - seedResearchInWindow);
+            // v2 exports always carry citable_*; the fallback only covers old files.
+            const hasCitable = point.citable_papers !== undefined;
+            const num = hasCitable ? (point.citable_citations || 0) : (point.citations || 0);
+            const den = hasCitable ? (point.citable_papers || 0) : (point.research || point.papers || 0);
+            const adjDen = den - seedsInWindow;
+            if (adjDen <= 0) return 0;
+            return Math.max(0, num - localSeedCits - iciteSeedCits) / adjDen;
         });
     }
 
@@ -1900,7 +1897,7 @@ class IMPACTApp {
      * Returns null when the type cannot be established, rather than silently
      * falling back to a benchmark that flatters or punishes.
      */
-    _computePaperBenchmark(ts, seed, citingPapers, localCyMap, windowKey, papersData) {
+    _computePaperBenchmark(ts, seed, citingPapers, localCyMap, windowKey, papersData, classes) {
         const windowParams = {
             'timeseries':      { pw: 24, skip: 0 },
             'timeseries_12mo': { pw: 12, skip: 0 },
@@ -1909,17 +1906,26 @@ class IMPACTApp {
         const { pw, skip } = windowParams[windowKey] || windowParams['timeseries'];
 
         // Article type: prefer our own record, fall back to iCite's boolean.
+        // Order follows doc_class.py's priority groups.
         let typeKey = null, typeSource = null;
         const rec = papersData?.papers?.find(p => String(p.pmid) === String(seed.pmid));
+        const isNoncitable = !!classes && classes.noncitable.has(Number(seed.pmid));
         if (rec?.pt) {
             const t = String(rec.pt).toLowerCase();
-            if (t.includes('review') || t.includes('meta-analysis')) typeKey = 'review';
+            if (t.includes('erratum') || t.includes('retraction of publication')
+                || t.includes('retraction notice') || t.includes('expression of concern')) typeKey = 'erratum';
+            else if (t.includes('guideline') || t.includes('consensus development')) typeKey = 'guideline';
+            else if (t.includes('review') || t.includes('meta-analysis')) typeKey = 'review';
+            else if (t.includes('case report')) typeKey = 'case_report';
+            else if (t.includes('editorial comment')) typeKey = 'letter';
             else if (t.includes('editorial')) typeKey = 'editorial';
             else if (t.includes('letter') || t.includes('comment')) typeKey = 'letter';
             else if (t.includes('journal article') || t.includes('trial')) typeKey = 'research';
+            // A "Journal Article" the classifier moved out of the citable set is commentary
+            if (typeKey === 'research' && isNoncitable) typeKey = 'commentary';
             typeSource = 'local';
         }
-        if (!typeKey) {
+        if (!typeKey && !isNoncitable) {
             const isRes = seed.is_research_article === true || seed.is_research_article === 'Yes';
             if (isRes) { typeKey = 'research'; typeSource = 'icite'; }
         }
@@ -2004,12 +2010,29 @@ class IMPACTApp {
         });
     }
 
-    _renderInfluenceChart(journalData, seedPapers, seedsInJournal, localCyMap, citingPapers, totalCitedBy, papersData) {
+    _renderInfluenceChart(journalData, seedPapers, seedsInJournal, localCyMap, citingPapers, totalCitedBy, papersData, classes) {
+        const citable = classes ? classes.citable : null;
+        const classOf = p => {
+            const id = Number(p.pmid);
+            if (classes && classes.citable.has(id)) return 'citable';
+            if (classes && classes.noncitable.has(id)) return 'noncitable';
+            return 'unknown';
+        };
+        // Only citable seeds are in the rate, so only they can move it.
+        const removableSeeds = seedsInJournal.filter(p => classOf(p) === 'citable');
+
         // Paper info card
         const listEl = document.getElementById('inf-paper-list');
         listEl.innerHTML = seedPapers.map(p => {
             const inJ = seedsInJournal.some(s => s.pmid === p.pmid);
-            const badge = inJ ? '' : ` <span class="inf-not-in-journal">not in ${journalData.journal}</span>`;
+            let badge = '';
+            if (!inJ) {
+                badge = ` <span class="inf-not-in-journal">not in ${journalData.journal}</span>`;
+            } else if (classOf(p) === 'unknown') {
+                badge = ' <span class="inf-type-note">type unknown; not removed</span>';
+            } else if (classOf(p) === 'noncitable') {
+                badge = ' <span class="inf-type-note">not a citable item; not in the rate</span>';
+            }
             return `
             <div class="inf-paper-row">
                 <div class="inf-paper-title">${p.title || 'Unknown title'}${badge}</div>
@@ -2034,7 +2057,7 @@ class IMPACTApp {
         const iciteSeeds = seedsInJournal.filter(p => !localCyMap[String(p.pmid)]);
 
         // Combined adjIf — all seeds removed together (used for metrics always)
-        const adjIf = this._computeAdjIf(ts, localSeeds, iciteSeeds, citingPapers, localCyMap, windowKey);
+        const adjIf = this._computeAdjIf(ts, localSeeds, iciteSeeds, citingPapers, localCyMap, windowKey, citable);
 
         // Metric cards (always based on combined)
         const totalLocalCits = localSeeds.reduce((s, p) => {
@@ -2054,7 +2077,7 @@ class IMPACTApp {
         const _wp = { 'timeseries': { pw: 24, skip: 0 }, 'timeseries_12mo': { pw: 12, skip: 0 },
                       'timeseries_5yr': { pw: 60, skip: 12 } }[windowKey]
                     || { pw: 24, skip: 0 };
-        const seedOrds = seedsInJournal.map(sd => (sd.year || 0) * 12 + 6);
+        const seedOrds = removableSeeds.map(sd => (sd.year || 0) * 12 + 6);
         const inWindowIdx = [];
         ts.forEach((point, i) => {
             const [yy, mm] = point.month.split('-').map(Number);
@@ -2102,7 +2125,7 @@ class IMPACTApp {
 
         // Type-matched benchmark across the in-journal seeds.
         const benchmarks = seedsInJournal
-            .map(sd => this._computePaperBenchmark(ts, sd, citingPapers, localCyMap, windowKey, papersData))
+            .map(sd => this._computePaperBenchmark(ts, sd, citingPapers, localCyMap, windowKey, papersData, classes))
             .filter(Boolean);
         let bench = null;
         if (benchmarks.length) {
@@ -2118,7 +2141,9 @@ class IMPACTApp {
 
         const signed = v => `${v >= 0 ? '+' : '\u2212'}${Math.abs(v).toFixed(3)}`;
         const TYPE_LABEL = { research: 'research paper', review: 'review',
-                             editorial: 'editorial', letter: 'letter' };
+                             case_report: 'case report', guideline: 'guideline',
+                             editorial: 'editorial', letter: 'letter', erratum: 'erratum',
+                             commentary: 'commentary' };
 
         const cards = [
             [totalCitations.toLocaleString() + dataNote, 'Total citations (all years, in-journal only)'],
@@ -2191,7 +2216,7 @@ class IMPACTApp {
             const contribs = seedsInJournal.map(seed => {
                 const sl = localCyMap[String(seed.pmid)] ? [seed] : [];
                 const si = localCyMap[String(seed.pmid)] ? [] : [seed];
-                const singleAdjIf = this._computeAdjIf(ts, sl, si, citingPapers, localCyMap, windowKey);
+                const singleAdjIf = this._computeAdjIf(ts, sl, si, citingPapers, localCyMap, windowKey, citable);
                 return ts.map((pt, i) => (pt.rolling_if || 0) - singleAdjIf[i]);
             });
 

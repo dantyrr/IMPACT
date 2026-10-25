@@ -1231,7 +1231,8 @@ tr.row-excluded td {
     margin: 0.6rem 0;
 }
 
-.inf-not-in-journal {
+.inf-not-in-journal,
+.inf-type-note {
     display: inline-block;
     margin-left: 0.5rem;
     padding: 0.1rem 0.4rem;
