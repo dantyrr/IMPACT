@@ -3,8 +3,10 @@
 
 Runs `classify` over impact.db papers (dry-run semantics) and writes a markdown
 report: current INFERENCE values, overall reclassification and class transitions,
-the per-journal share of research reclassified to commentary, samples of
-reclassified titles, and samples of `letter` titles with research-letter signals.
+the per-journal share of research reclassified to commentary, a per-journal
+breakdown of those research -> commentary changes by the inference signal that
+fired (short pages only / iCite only / both) and by pagination shape (bare
+number vs page range), samples of reclassified titles, and samples of `letter` titles with research-letter signals.
 
 Usage:
     python scripts/validate_doc_class.py [--out PATH]
@@ -12,6 +14,7 @@ Usage:
 import argparse
 import csv
 import os
+import re
 import sys
 from collections import Counter, defaultdict
 
@@ -50,6 +53,8 @@ EXTRA = {
              ["arteriosclerosis, thrombosis, and vascular biology"]),
     "plos-one": (["plos-one"], ["plos one"]),
     "nat-commun": (["nature-communications"], ["nature communications"]),
+    "sci-rep": (["scientific-reports"], ["scientific reports"]),
+    "cell-rep": (["cell-reports"], ["cell reports"]),
     "nrmcb": (["nature-reviews-molecular-cell-biology"],
               ["nature reviews. molecular cell biology", "nature reviews molecular cell biology"]),
     "nrc": (["nature-reviews-cancer"],
@@ -68,6 +73,41 @@ def resolve(journals_by_slug, journals_by_name, key):
         if n in journals_by_name:
             return journals_by_name[n]
     return None
+
+
+SIGNALS = ("short_only", "icite_only", "both")
+PAGINATIONS = ("bare", "range", "other")
+_RANGE_RE = re.compile(r"\d+\s*-\s*\d+")
+
+
+def rc_signal(d):
+    """Which inference signal(s) turned a paper into commentary, mirroring
+    doc_class.classify (commentary only ever comes from that inference)."""
+    pages = d["page_count"]
+    short = pages is not None and pages <= INFERENCE["max_pages"]
+    icite = bool(INFERENCE["use_icite"]) and d["icite_is_research"] is False
+    if short and icite:
+        return "both"
+    return "short_only" if short else "icite_only"
+
+
+def pagination_shape(pgn):
+    """'bare' (digits only, e.g. "5"), 'range' ("101-5"), or 'other' (none, e-locator)."""
+    s = (pgn or "").strip()
+    if s.isdigit():
+        return "bare"
+    if _RANGE_RE.fullmatch(s):
+        return "range"
+    return "other"
+
+
+def fetch_paginations(full, pmids):
+    out = {}
+    for i in range(0, len(pmids), 900):
+        part = pmids[i:i + 900]
+        q = ",".join("?" * len(part))
+        out.update(full.execute(f"SELECT pmid, pagination FROM pubmed WHERE pmid IN ({q})", part))
+    return out
 
 
 def is_reply(title):
@@ -96,9 +136,11 @@ def build_report(impact, full, icite):
     named = {k: resolve(by_slug, by_name, k) for k in EXTRA}
     wanted = list(dict.fromkeys(detector + [s for s in named.values() if s]))
     wanted_set = set(wanted)
+    wanted_ids = {by_slug[s] for s in wanted if s in by_slug}
 
     transitions, seen, missing = Counter(), 0, 0
     jr = defaultdict(lambda: [0, 0])      # slug -> [old research, research->commentary]
+    rc = defaultdict(Counter)             # slug -> research->commentary by signal / pagination
     reclass = defaultdict(list)           # slug -> [(pmid, title, old, new)]
     letters = defaultdict(list)           # slug -> [(pmid, title, pub_date, icite)]
     nonletter_first = defaultdict(dict)   # slug -> title -> earliest pub_date (non-letter)
@@ -113,6 +155,7 @@ def build_report(impact, full, icite):
             break
         last = rows[-1][0]
         inputs = fetch_class_inputs(full, icite, [r[0] for r in rows])
+        pgn = fetch_paginations(full, [r[0] for r in rows if r[1] in wanted_ids])
         for pmid, jid, title, pub_date, pub_type in rows:
             seen += 1
             d = inputs.get(pmid)
@@ -127,6 +170,11 @@ def build_report(impact, full, icite):
             if slug in wanted_set and old == "research":
                 jr[slug][0] += 1
                 jr[slug][1] += new == "commentary"
+                if new == "commentary":
+                    sig, shape = rc_signal(d), pagination_shape(pgn.get(pmid))
+                    rc[slug][sig] += 1
+                    rc[slug][shape] += 1
+                    rc[slug][(sig, shape)] += 1
             if slug in sample_slugs:
                 if old != new:
                     reclass[slug].append((pmid, title, old, new))
@@ -164,6 +212,25 @@ def build_report(impact, full, icite):
         n, c = jr[slug]
         share = f"{100 * c / n:.1f}%" if n else "n/a"
         out.append(f"| {md_cell(slug)} | present | {n} | {c} | {share} |")
+    out += ["", "### Research -> commentary by signal and pagination", "",
+            "Each journal's research -> commentary papers split by the signal that fired: "
+            "`short only` (no abstract and page count <= max_pages, iCite not against), "
+            "`iCite only` (no abstract and iCite says not research, pages not short), or `both`. "
+            "Pagination: `bare` = MedlinePgn is digits only (e.g. \"5\", counted as 1 page "
+            "by parse_page_count, which may be a start page only or a genuine one-page item), "
+            "`range` = start-end, `other` = none or an e-locator. `short & bare` = short-only "
+            "papers whose pagination was a bare number.", "",
+            "| slug | research -> commentary | short only | iCite only | both "
+            "| bare | range | other | short & bare |",
+            "|---|---|---|---|---|---|---|---|---|"]
+    for slug in wanted:
+        if slug not in by_slug:
+            out.append(f"| {md_cell(slug)} | absent | | | | | | | |")
+            continue
+        c = rc[slug]
+        cells = [jr[slug][1]] + [c[k] for k in SIGNALS] + [c[k] for k in PAGINATIONS] \
+            + [c[("short_only", "bare")]]
+        out.append(f"| {md_cell(slug)} | " + " | ".join(str(v) for v in cells) + " |")
     unresolved = [k for k, v in named.items() if v is None]
     if unresolved:
         out += ["", "Named journals not found (absent): " + ", ".join(unresolved)]

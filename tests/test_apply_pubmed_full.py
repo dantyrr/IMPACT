@@ -345,3 +345,44 @@ def test_lock_lost_mid_run_commits_and_exits_1(env, monkeypatch, caplog):
     assert fetch(env.impact, "SELECT pmid, doc_class FROM papers ORDER BY pmid") == \
         [(1, "research"), (2, "research"), (3, None), (4, None)]
     assert "rebuild lock holder is gone" in caplog.text
+
+
+def test_validate_signal_and_pagination_breakdown(env, tmp_path, monkeypatch):
+    # Sci Rep / Cell Rep resolve by journals.name even under non-standard slugs.
+    papers = [{"pmid": i, "journal_id": 1} for i in (1, 2, 3, 4, 5)] + [{"pmid": 6, "journal_id": 2}]
+    make_impact(env.impact, papers,
+                journals=[(1, "1", "Scientific reports", "SR", "sr-x"),
+                          (2, "2", "Cell reports", "CR", "cr-x")])
+    make_full(env.full, [
+        {"pmid": 1, "has_abstract": 0, "page_count": 1},              # short only, bare "5"
+        {"pmid": 2, "has_abstract": 0, "page_count": None},           # iCite only, e-locator
+        {"pmid": 3, "has_abstract": 0, "page_count": 2},              # both, range
+        {"pmid": 4, "pub_types": ["Editorial"], "pub_type": "Editorial"},  # editorial: not counted
+        {"pmid": 5, "has_abstract": 1, "page_count": 1},              # stays research
+        {"pmid": 6}])
+    c = sqlite3.connect(env.full)
+    c.executemany("UPDATE pubmed SET pagination=? WHERE pmid=?",
+                  [("5", 1), ("e123", 2), ("10-11", 3), ("7", 4), ("1", 5), ("1-10", 6)])
+    c.commit()
+    c.close()
+    make_icite(env.icite, [(1, 1), (2, 0), (3, 0)])
+    csv = tmp_path / "flagged.csv"
+    csv.write_text("slug,name\n")
+    for k, v in (("IMPACT_DB_PATH", str(env.impact)), ("FULL_DB_PATH", str(env.full)),
+                 ("ICITE_DB_PATH", str(env.icite)), ("DETECTOR_CSV", str(csv))):
+        monkeypatch.setattr(val_mod, k, v)
+    out = tmp_path / "report.md"
+    assert val_mod.main(["--out", str(out)]) == 0
+    text = out.read_text()
+    assert "### Research -> commentary by signal and pagination" in text
+    header = ("| slug | research -> commentary | short only | iCite only | both "
+              "| bare | range | other | short & bare |")
+    assert header in text
+    rows = {l.split("|")[1].strip(): [c.strip() for c in l.split("|")[2:-1]]
+            for l in text.split(header, 1)[1].splitlines()
+            if l.startswith("| ") and l.count("|") == 10}
+    #                 r->c short icite both bare range other short&bare
+    assert rows["sr-x"] == ["3", "1", "1", "1", "1", "1", "1", "1"]
+    assert rows["cr-x"] == ["0", "0", "0", "0", "0", "0", "0", "0"]
+    unresolved = [l for l in text.splitlines() if l.startswith("Named journals not found")]
+    assert unresolved and "sci-rep" not in unresolved[0] and "cell-rep" not in unresolved[0]
