@@ -1927,7 +1927,9 @@ class IMPACTApp {
         };
         const { pw, skip } = windowParams[windowKey] || windowParams['timeseries'];
 
-        // Article type: prefer our own record, fall back to iCite's boolean.
+        // Article type: prefer our own record (papers file). Without one, a seed
+        // counts as research only if the class file lists it as citable AND
+        // iCite agrees it is research (iCite alone never labels it).
         // Order follows doc_class.py's priority groups.
         let typeKey = null, typeSource = null;
         const rec = papersData?.papers?.find(p => String(p.pmid) === String(seed.pmid));
@@ -1947,9 +1949,10 @@ class IMPACTApp {
             if (typeKey === 'research' && isNoncitable) typeKey = 'commentary';
             typeSource = 'local';
         }
-        if (!typeKey && !isNoncitable) {
+        const isCitable = !!classes?.citable?.has(Number(seed.pmid));
+        if (!typeKey && isCitable) {
             const isRes = seed.is_research_article === true || seed.is_research_article === 'Yes';
-            if (isRes) { typeKey = 'research'; typeSource = 'icite'; }
+            if (isRes) { typeKey = 'research'; typeSource = 'class'; }
         }
         if (!typeKey) return null;
 
