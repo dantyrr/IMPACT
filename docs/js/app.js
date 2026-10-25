@@ -2170,15 +2170,22 @@ class IMPACTApp {
                              editorial: 'editorial', letter: 'letter', erratum: 'erratum',
                              commentary: 'commentary' };
 
+        const nothingRemovable = removableSeeds.length === 0;
         const cards = [
             [totalCitations.toLocaleString() + dataNote, 'Total citations (all years, in-journal only)'],
-            [signed(meanContrib),
-                `Net effect on journal's rate` +
-                `<br><span class="metric-sublabel">${meanContrib >= 0 ? 'Raised' : 'Lowered'} the rolling rate while in window` +
-                `${inWindowIdx.length ? `<br>${inWindowIdx.length} months in window` : ''}</span>`],
-            [signed(maxContrib),
-                `Peak effect` +
-                (peakWin ? `<br><span class="metric-sublabel">Papers: ${peakWin.papers}<br>Citations: ${peakWin.citations}</span>` : '')],
+            nothingRemovable
+                ? ['No effect',
+                    `Net effect on journal's rate` +
+                    `<br><span class="metric-sublabel">No citable paper to remove, so the rate is unchanged</span>`]
+                : [signed(meanContrib),
+                    `Net effect on journal's rate` +
+                    `<br><span class="metric-sublabel">${meanContrib >= 0 ? 'Raised' : 'Lowered'} the rolling rate while in window` +
+                    `${inWindowIdx.length ? `<br>${inWindowIdx.length} months in window` : ''}</span>`],
+            nothingRemovable
+                ? ['\u2014', 'Peak effect<br><span class="metric-sublabel">Nothing removed</span>']
+                : [signed(maxContrib),
+                    `Peak effect` +
+                    (peakWin ? `<br><span class="metric-sublabel">Papers: ${peakWin.papers}<br>Citations: ${peakWin.citations}</span>` : '')],
         ];
 
         if (bench && bench.ratio != null) {
