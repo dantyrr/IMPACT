@@ -186,7 +186,7 @@ class ChartManager {
     }
 
     /**
-     * Stacked-area colours per article type (Okabe-Ito; commentary grey, last).
+     * Stacked-area colours per article type (Okabe-Ito; Other black, Commentary grey, last).
      */
     _compositionTypeConfig() {
         const cfg = (label, color) => {
@@ -203,7 +203,7 @@ class ChartManager {
             editorial:   cfg('Editorials',        '#E69F00'),
             letter:      cfg('Letters',           '#009E73'),
             erratum:     cfg('Errata',            '#CC79A7'),
-            other:       cfg('Other',             '#7f7f7f'),
+            other:       cfg('Other',             '#000000'),
             commentary:  cfg('Commentary',        '#999999'),
         };
     }
