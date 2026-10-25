@@ -689,9 +689,10 @@
 
             <h3>Research-Only Citation Rate</h3>
             <p>
-                IMPACT also computes a citation rate over research articles only, excluding reviews
-                from both the numerator and denominator. The gap between the two rates shows how much
-                of a journal's rate depends on reviews.
+                IMPACT also computes a citation rate over research articles only: reviews, case
+                reports and guidelines are left out of both the numerator and denominator. Comparing
+                it with the citable-items rate shows how much of a journal's rate comes from those
+                other citable types.
             </p>
 
             <h3>Tracked Journals</h3>
@@ -768,10 +769,13 @@
                 research article. iCite's flag is evidence for this rule only; it does not set the
                 research class by itself.
             </p>
+            <!-- revise after doc_class validation gate -->
             <p>
-                Items PubMed types as "Letter" are not counted as citable. This undercounts short
-                research formats such as research letters at journals that publish them under that type.
+                Items PubMed types as "Letter" are not counted as citable in this release. This undercounts short
+                research formats such as research letters at journals that publish them under that type;
+                a signal to recover them is still being validated.
             </p>
+            <!-- revise after doc_class validation gate -->
 
             <h3>Reliability flags</h3>
             <p>
@@ -779,11 +783,12 @@
                 fewer than 20 research items; fewer than 15 review items; reviews at least 50% of
                 citable items; at least 10% of papers with an inferred class.
             </p>
+            <!-- revise after flag distribution -->
 
             <h3>Dates and citation months</h3>
             <p>
                 A paper is dated by its electronic publication date when PubMed records one, otherwise
-                its issue date; a missing month is set to June. iCite gives only the year of each
+                its issue date; a missing month is set to June (citing papers whose month cannot be resolved: June in the bulk build, January in the weekly update). iCite gives only the year of each
                 citation, so the month is taken from the citing paper's PubMed record.
             </p>
 

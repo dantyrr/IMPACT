@@ -71,7 +71,7 @@ Papers with an abstract keep the PubMed class. A missing page count or a missing
 
 ### Short research formats
 
-Items that PubMed types as "Letter" are not counted as citable. Research letters and other short original reports that a journal publishes under that type are therefore excluded, and the citation rate undercounts short research formats for journals that use them. The inference rule can recover letters, but that option is off in the current release, pending validation.
+Items that PubMed types as "Letter" are not counted as citable. Research letters and other short original reports that a journal publishes under that type are therefore excluded, and the citation rate undercounts short research formats for journals that use them. Letters are not recovered in this release. A signal for separating research letters from correspondence is still being validated.
 
 <!-- revise after doc_class validation gate -->
 
@@ -129,7 +129,7 @@ A paper's publication date is its electronic publication date when PubMed record
 
 ### Citation months
 
-iCite gives the year of each citation but not the month. Every citing paper is also a PubMed record, so IMPACT takes the citing paper's publication month from `pubmed_full.db`; for very recent citing papers not yet there, a PubMed lookup is used. Where a month cannot be resolved it is set to June.
+iCite gives the year of each citation but not the month. Every citing paper is also a PubMed record, so IMPACT takes the citing paper's publication month from `pubmed_full.db`; for very recent citing papers not yet there, a PubMed lookup is used. Where a month cannot be resolved the bulk pipeline sets it to June; the weekly update uses the stored month of the citing paper, or January if none is stored.
 
 ```
 Paper P published 2022-03.

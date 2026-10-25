@@ -82,7 +82,15 @@ class IMPACTApp {
         document.querySelectorAll('a[data-goto-section]').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
-                this.showSection(link.dataset.gotoSection);
+                const target = link.dataset.gotoSection;
+                this.showSection(target);
+                // Methodology is a child of About: keep About highlighted and make the link shareable
+                if (target === 'methodology') {
+                    document.querySelector('.nav-link[data-section="about"]')?.classList.add('active');
+                    history.replaceState(null, '', '#methodology');
+                } else {
+                    history.replaceState(null, '', location.pathname + location.search);
+                }
                 window.scrollTo(0, 0);
             });
         });
@@ -2408,7 +2416,11 @@ class IMPACTApp {
 
     _handleDeepLink() {
         const hash = location.hash;
-        if (hash === '#methodology') { this.showSection('methodology'); return; }
+        if (hash === '#methodology') {
+            this.showSection('methodology');
+            document.querySelector('.nav-link[data-section="about"]')?.classList.add('active');
+            return;
+        }
         if (!hash.startsWith('#author/')) return;
 
         const rest = hash.slice('#author/'.length);

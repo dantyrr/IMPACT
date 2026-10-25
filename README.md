@@ -165,7 +165,7 @@ python scripts/upload_to_r2.py                # sync changed JSONs to CDN
 
 The script runs three phases:
 
-**Phase 1 — New papers** (~2 min). Queries PubMed ESearch for papers added in the last N days (one query per day to stay under the 9,999-result limit). Fetches metadata via ESummary, matches each paper's ISSN to our tracked journals, and inserts into `impact.db`. A typical week adds ~30,000 papers.
+**Phase 1 — New papers** (~2 min). Queries PubMed ESearch for papers added in the last N days (one query per day to stay under the 9,999-result limit). Fetches full records (including author bylines) via EFetch, matches each paper's ISSN to our tracked journals, and inserts into `impact.db`. A typical week adds ~30,000 papers.
 
 **Phase 2 — New citation events** (~2 min). Fetches iCite records for the new papers. Each record includes a `references` list — the older papers it cites. Cross-references those against papers already in the database. For each match, records a citation event dated to the citing paper's publication month. A typical week adds ~200,000+ citation events. (iCite has a processing lag of days to weeks, so very new papers without iCite data yet are automatically caught on the next run — overlapping 10-day windows handle this.)
 

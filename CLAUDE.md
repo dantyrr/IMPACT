@@ -46,7 +46,7 @@ Data sources: PubMed Annual Baseline + update files (~40M records) + iCite Open 
 - No framework, no build step — edit JS/CSS/HTML directly in `docs/`
 - `app.js` is the main controller (~2000 lines, IMPACTApp class)
 - `data-loader.js` handles R2 CDN fetch with local fallback + in-memory cache
-- 7 sections: Journals, Compare, Papers, Authors, Geography, Influence, About
+- 8 sections: Journals, Compare, Papers, Authors, Geography, Influence, About, Methodology (linked from About, not in the nav)
 - Test locally by serving `docs/` (e.g., `python -m http.server -d docs`)
 
 ## Database Schema (SQLite)
