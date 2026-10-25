@@ -65,15 +65,11 @@ PubMed types some commentary and front matter as "Journal Article". A paper that
 - its page count is 2 or fewer, or
 - iCite reports it is not a research article.
 
-Papers with an abstract keep the PubMed class. A missing page count or a missing iCite value is not evidence. iCite's research-article flag is therefore evidence for this rule only; it no longer sets the research flag by itself.
-
-<!-- revise after doc_class validation gate -->
+Papers with an abstract keep the PubMed class. A missing page count or a missing iCite value is not evidence. iCite's research-article flag is therefore evidence for this rule only; it no longer sets the research flag by itself. A pagination that is a single page number (for example "5") counts as one page.
 
 ### Short research formats
 
-Items that PubMed types as "Letter" are not counted as citable. Research letters and other short original reports that a journal publishes under that type are therefore excluded, and the citation rate undercounts short research formats for journals that use them. Letters are not recovered in this release. A signal for separating research letters from correspondence is still being validated.
-
-<!-- revise after doc_class validation gate -->
+Items that PubMed types as "Letter" are not counted as citable. Research letters and other short original reports that a journal publishes under that type are therefore excluded, and the citation rate undercounts short research formats for journals that use them. Letters are not recovered in this release. PubMed gives research letters and ordinary correspondence the same "Letter" type, and iCite marks few of them as research articles, so neither source separates the two reliably. Separating them is planned for a later release.
 
 ### Research-only rate
 

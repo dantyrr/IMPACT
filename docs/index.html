@@ -788,15 +788,14 @@
                 A paper PubMed types only as a journal article, with no abstract, is reclassified as
                 commentary (not citable) if it has two pages or fewer, or if iCite says it is not a
                 research article. iCite's flag is evidence for this rule only; it does not set the
-                research class by itself.
+                research class by itself. A pagination that is a single page number counts as one page.
             </p>
-            <!-- revise after doc_class validation gate -->
             <p>
                 Items PubMed types as "Letter" are not counted as citable in this release. This undercounts short
                 research formats such as research letters at journals that publish them under that type;
-                a signal to recover them is still being validated.
+                PubMed gives research letters and ordinary correspondence the same type, and iCite rarely marks
+                them as research, so they cannot yet be separated reliably. Separating them is planned for a later release.
             </p>
-            <!-- revise after doc_class validation gate -->
 
             <h3>Reliability flags</h3>
             <p>
