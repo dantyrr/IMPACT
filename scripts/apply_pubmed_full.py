@@ -5,7 +5,8 @@ For every impact.db paper that has a row in pubmed_full.db this sets pub_type,
 doc_class, class_source, is_research (1 iff doc_class == 'research') and the
 first_author_* / last_author_* name, institution, city, state, country fields.
 Gender columns and *_forename columns are never touched. Papers without a
-pubmed_full row are left as they are. An author with no affiliation in the new
+pubmed_full row are left as they are (the summary counts them as missing; they
+may include records PubMed has since deleted). An author with no affiliation in the new
 data keeps the existing institution/city/state/country values.
 
 Usage:
@@ -165,7 +166,8 @@ def main(argv=None) -> int:
             _checkpoint(conn)
         mode = "dry-run: would update" if args.dry_run else "updated"
         print(f"{mode} {matched} papers of {seen} examined; "
-              f"missing from pubmed_full: {seen - matched} (left untouched)")
+              f"missing from pubmed_full: {seen - matched} (left untouched; may include "
+              f"records PubMed deleted upstream)")
         for cls, n in sorted(counts.items(), key=lambda kv: -kv[1]):
             print(f"  {cls}: {n}")
         return 0

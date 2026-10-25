@@ -386,3 +386,13 @@ def test_validate_signal_and_pagination_breakdown(env, tmp_path, monkeypatch):
     assert rows["cr-x"] == ["0", "0", "0", "0", "0", "0", "0", "0"]
     unresolved = [l for l in text.splitlines() if l.startswith("Named journals not found")]
     assert unresolved and "sci-rep" not in unresolved[0] and "cell-rep" not in unresolved[0]
+
+
+def test_summary_says_missing_may_include_upstream_deletions(env, capsys):
+    # pmid 2 is in impact.db but has no pubmed_full row (e.g. a PubMed DeleteCitation).
+    make_impact(env.impact, [{"pmid": 1}, {"pmid": 2}])
+    make_full(env.full, [{"pmid": 1}])
+    assert apply_mod.main([]) == 0
+    out = capsys.readouterr().out
+    assert "missing from pubmed_full: 1 (left untouched; may include records " \
+           "PubMed deleted upstream)" in out
