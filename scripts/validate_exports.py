@@ -67,6 +67,25 @@ def validate_journal_file(path: Path, since: str = None, classes_dir: Path = Non
     return errors
 
 
+GEO_KEYS = ["papers", "intl", "us_papers", "countries", "states", "country_pairs", "state_pairs"]
+
+
+def validate_geo(geo_dir: Path, slugs: list) -> list:
+    """geo/{slug}.json per journal and geo/_all.json, each with the export's keys."""
+    errors = []
+    for slug in ["_all", *slugs]:
+        path = geo_dir / f"{slug}.json"
+        if not path.exists():
+            errors.append(f"missing geo/{slug}.json")
+            continue
+        with open(path) as f:
+            data = json.load(f)
+        missing = [k for k in GEO_KEYS if k not in data]
+        if missing:
+            errors.append(f"geo/{slug}.json: missing {', '.join(missing)}")
+    return errors
+
+
 def validate_index(path: Path) -> list:
     errors = []
     with open(path) as f:
@@ -115,6 +134,12 @@ def main(argv=None) -> int:
     classes_dir = args.data_dir / "classes"
     for jf in journal_files:
         all_errors.extend(validate_journal_file(jf, args.since, classes_dir))
+
+    # Geography files are checked only once an export has made the directory
+    # (scripts/export_geography.py runs separately from the weekly update).
+    geo_dir = args.data_dir / "geo"
+    if geo_dir.is_dir():
+        all_errors.extend(validate_geo(geo_dir, [jf.stem for jf in journal_files]))
 
     # Report
     if all_errors:

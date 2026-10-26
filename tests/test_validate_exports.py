@@ -121,3 +121,20 @@ def test_existing_checks_kept(data, capsys):
     assert run(data) == 1
     out = capsys.readouterr().out
     assert "latest missing 'rolling_if'" in out and "journals list is empty" in out
+
+
+GEO = {"papers": {}, "intl": {}, "us_papers": {}, "countries": {}, "states": {},
+       "country_pairs": {}, "state_pairs": {}}
+
+
+def test_geo_files_checked_once_the_directory_exists(data, capsys):
+    write(data, [journal("a"), journal("b")])
+    (data / "geo").mkdir()
+    (data / "geo" / "_all.json").write_text(json.dumps(GEO))
+    (data / "geo" / "a.json").write_text(json.dumps(GEO))
+    (data / "geo" / "b.json").write_text(json.dumps({"papers": {}}))
+    assert run(data) == 1
+    out = capsys.readouterr().out
+    assert "geo/b.json: missing intl" in out
+    (data / "geo" / "b.json").write_text(json.dumps(GEO))
+    assert run(data) == 0
