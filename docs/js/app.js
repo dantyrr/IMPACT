@@ -41,8 +41,6 @@ class IMPACTApp {
         this.detailYMin = null; this.detailYMax = null;
         this._jcCompShowCombined = true;
         this._jcCompShowIndividual = true;
-        this._geoTrendXMin = null; this._geoTrendXMax = null;
-        this._geoTrendYMin = null; this._geoTrendYMax = null;
         this.init();
     }
 
@@ -2870,6 +2868,7 @@ class IMPACTApp {
     }
 
     _renderAuthorSearchResults(papers, totalFound) {
+        this._resetReach();
         this._authorAllPapers = papers;
         this._authorExcluded = new Set();
         this._authorActiveTypes = null;
@@ -3120,458 +3119,50 @@ class IMPACTApp {
 
     // ---- Geography ----
 
-    // US state abbreviations to normalize to "USA"
-    static get US_STATES() {
-        return new Set([
-            'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN',
-            'IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV',
-            'NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN',
-            'TX','UT','VT','VA','WA','WV','WI','WY','DC',
-        ]);
-    }
-
-    _normalizeCountry(c) {
-        if (!c) return null;
-        const t = c.trim();
-        if (IMPACTApp.US_STATES.has(t.toUpperCase())) return 'USA';
-        // Strip trailing email artifacts
-        const clean = t.replace(/\.\s*(electronic address|email):?.*/i, '').trim();
-        const lo = clean.toLowerCase();
-        if (lo === 'usa' || lo === 'us' || lo === 'united states' || lo === 'united states of america') return 'USA';
-        if (lo === 'uk' || lo === 'england' || lo === 'scotland' || lo === 'wales' || lo === 'great britain') return 'United Kingdom';
-        if (/^(people.?s republic of china|pr china|p\.?\s*r\.?\s*china)$/i.test(clean)) return 'China';
-        if (lo === 'republic of korea' || lo === 'south korea') return 'South Korea';
-        if (lo === 'democratic people\'s republic of korea' || lo === 'north korea') return 'North Korea';
-        if (lo === 'islamic republic of iran' || lo === 'iran, islamic republic') return 'Iran';
-        if (lo === 'russian federation' || lo === 'russia') return 'Russia';
-        if (lo === 'czech republic' || lo === 'czechia') return 'Czech Republic';
-        if (lo === 'the netherlands' || lo === 'netherlands') return 'Netherlands';
-        if (lo === 'taiwan' || lo === 'republic of china') return 'Taiwan';
-        return clean || null;
-    }
-
     setupGeography() {
-        this.geoPicker = new SingleJournalPicker(
-            'geo-journal-picker', this.journals,
-            (slug) => {
-                if (slug) {
-                    this.loadGeographyData(slug);
-                } else {
-                    document.getElementById('geo-content').style.display = 'none';
-                    document.getElementById('geo-hint').textContent = 'Select a journal above to see its geographic breakdown.';
-                    document.getElementById('geo-hint').style.display = '';
-                }
-            }
-        );
+        this.geoTab = new GeoTab(this);
+        this.reachTab = new GeoTab(this, { prefix: 'reach', picker: false, compareMode: 'none' });
+        document.getElementById('reach-run-btn').addEventListener('click', () => this._runReach());
     }
 
-    async loadGeographyData(slug) {
-        const hint = document.getElementById('geo-hint');
-        const content = document.getElementById('geo-content');
-        hint.textContent = 'Loading…';
-        hint.style.display = '';
-        content.style.display = 'none';
-
-        // Reset range state
-        this._geoTrendXMin = null; this._geoTrendXMax = null;
-        this._geoTrendYMin = null; this._geoTrendYMax = null;
-        const gxMin = document.getElementById('geo-trend-x-min');
-        const gxMax = document.getElementById('geo-trend-x-max');
-        const gyMin = document.getElementById('geo-trend-y-min');
-        const gyMax = document.getElementById('geo-trend-y-max');
-        if (gxMin) gxMin.value = '';
-        if (gxMax) gxMax.value = '';
-        if (gyMin) gyMin.value = '';
-        if (gyMax) gyMax.value = '';
-
-        try {
-            if (!this.papersDataCache[`${slug}__geo`]) {
-                const d = await dataLoader.loadPapers(slug);
-                this.papersDataCache[`${slug}__geo`] = d.geo || null;
-            }
-
-            const geo = this.papersDataCache[`${slug}__geo`];
-            if (!geo || Object.keys(geo).length === 0) {
-                hint.textContent = 'Geographic data not yet available for this journal.';
-                hint.style.display = '';
-                return;
-            }
-
-            // Normalize countries (state abbrevs → USA)
-            const normalizedGeo = {};
-            Object.entries(geo).forEach(([yr, countries]) => {
-                normalizedGeo[yr] = {};
-                Object.entries(countries).forEach(([c, n]) => {
-                    const norm = this._normalizeCountry(c);
-                    if (norm) normalizedGeo[yr][norm] = (normalizedGeo[yr][norm] || 0) + n;
-                });
-            });
-
-            const years = Object.keys(normalizedGeo).sort();
-
-            // Overall totals per country
-            const totals = {};
-            Object.values(normalizedGeo).forEach(byCountry => {
-                Object.entries(byCountry).forEach(([c, n]) => {
-                    totals[c] = (totals[c] || 0) + n;
-                });
-            });
-
-            const top10 = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 10).map(x => x[0]);
-
-            // Metrics
-            const totalPapers = Object.values(totals).reduce((a, b) => a + b, 0);
-            const nCountries = Object.keys(totals).length;
-            const recentYears = years.slice(-3);
-            const recentTotals = {};
-            recentYears.forEach(yr => {
-                Object.entries(normalizedGeo[yr] || {}).forEach(([c, n]) => {
-                    recentTotals[c] = (recentTotals[c] || 0) + n;
-                });
-            });
-            const topRecent = Object.entries(recentTotals).sort((a, b) => b[1] - a[1]).slice(0, 12);
-
-            document.getElementById('geo-metrics-row').innerHTML = [
-                [totalPapers.toLocaleString(), 'Papers with Location Data'],
-                [nCountries, 'Countries'],
-                [top10[0] || '—', 'Top Country Overall'],
-                [topRecent[0] ? topRecent[0][0] : '—', `Top Country (${recentYears[0]}–${recentYears[recentYears.length-1]})`],
-            ].map(([val, label]) =>
-                `<div class="metric-card"><span class="metric-value">${val}</span><span class="metric-label">${label}</span></div>`
-            ).join('');
-
-            hint.style.display = 'none';
-            content.style.display = '';
-
-            // World map
-            this._renderGeoMap(totals);
-
-            // Trend chart: stacked bars by year, top 10 countries
-            this._geoTrendData = { normalizedGeo, years, top10 };
-            this._renderGeoTrendChart();
-
-            // Wire up range controls (only once per load)
-            this._populateGeoYearSelects(years);
-            document.getElementById('geo-trend-range-controls').style.display = '';
-            this._setupRangeControls('geo-trend',
-                { xMin: '_geoTrendXMin', xMax: '_geoTrendXMax', yMin: '_geoTrendYMin', yMax: '_geoTrendYMax' },
-                () => this._renderGeoTrendChart()
-            );
-
-            // Top countries overall (horizontal bar)
-            const topOverall = Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 15);
-            chartManager.createBarChart('geo-top-chart',
-                topOverall.map(x => x[0]), topOverall.map(x => x[1]), 'Papers');
-
-            // Recent years (horizontal bar)
-            chartManager.createBarChart('geo-recent-chart',
-                topRecent.map(x => x[0]), topRecent.map(x => x[1]), 'Papers');
-
-            // Show download bars and wire up buttons
-            this._geoSlug = slug;
-            const journalName = (this.journals.find(j => j.slug === slug) || {}).name || slug;
-            this._geoJournalName = journalName;
-            ['geo-map', 'geo-trend', 'geo-top', 'geo-recent'].forEach(id => {
-                const bar = document.getElementById(`${id}-download-bar`);
-                if (bar) bar.style.display = '';
-                ['png', 'jpg', 'pdf'].forEach(fmt => {
-                    const btn = document.getElementById(`${id}-dl-${fmt}`);
-                    if (btn) btn.onclick = () => this._downloadGeo(id, fmt);
-                });
-            });
-
-        } catch (e) {
-            hint.textContent = 'Geographic data not yet available for this journal.';
-            hint.style.display = '';
-            console.error('Geo error:', e);
-        }
-    }
-
-    async _renderGeoMap(geoTotals) {
-        const container = document.getElementById('geo-map');
-        if (!container || typeof d3 === 'undefined' || typeof topojson === 'undefined') return;
-        container.innerHTML = '';
-
-        // Country name → [longitude, latitude] centroid
-        const CENTROIDS = {
-            'USA': [-98.5, 38.5], 'Canada': [-96.5, 60.0], 'Mexico': [-102.5, 23.6],
-            'Brazil': [-51.9, -14.2], 'Argentina': [-63.6, -38.4], 'Chile': [-71.5, -35.7],
-            'Colombia': [-74.3, 4.6], 'Peru': [-75.0, -9.2], 'Venezuela': [-66.6, 6.4],
-            'Ecuador': [-78.5, -1.8], 'Cuba': [-79.5, 21.5], 'Uruguay': [-55.8, -32.8],
-            'Bolivia': [-64.7, -16.7], 'Paraguay': [-58.4, -23.4],
-            'United Kingdom': [-1.5, 52.4], 'France': [2.2, 46.2], 'Germany': [10.5, 51.2],
-            'Italy': [12.6, 42.5], 'Spain': [-3.7, 40.4], 'Netherlands': [5.3, 52.1],
-            'Belgium': [4.5, 50.5], 'Switzerland': [8.2, 46.8], 'Austria': [14.6, 47.7],
-            'Sweden': [18.6, 59.3], 'Norway': [8.5, 60.5], 'Denmark': [9.5, 56.3],
-            'Finland': [25.7, 61.9], 'Portugal': [-8.2, 39.6], 'Ireland': [-8.2, 53.2],
-            'Poland': [19.1, 52.0], 'Czech Republic': [15.5, 49.8], 'Hungary': [19.5, 47.2],
-            'Romania': [24.9, 45.9], 'Bulgaria': [25.5, 42.7], 'Slovakia': [19.7, 48.7],
-            'Croatia': [15.2, 45.1], 'Serbia': [21.0, 44.0], 'Slovenia': [14.8, 46.1],
-            'Greece': [21.8, 39.1], 'Ukraine': [31.2, 49.0], 'Russia': [60.0, 60.0],
-            'Turkey': [35.2, 39.0], 'Belarus': [28.0, 53.7], 'Luxembourg': [6.1, 49.8],
-            'Estonia': [25.0, 58.6], 'Latvia': [24.6, 56.9], 'Lithuania': [23.9, 56.0],
-            'Iceland': [-19.0, 64.9], 'Albania': [20.2, 41.2], 'Cyprus': [33.4, 35.1],
-            'Bosnia and Herzegovina': [17.8, 44.0], 'North Macedonia': [21.7, 41.6],
-            'Moldova': [28.4, 47.4], 'Kazakhstan': [66.9, 48.0], 'Georgia': [43.4, 42.3],
-            'Azerbaijan': [47.6, 40.1], 'Armenia': [45.0, 40.1], 'Uzbekistan': [63.9, 41.4],
-            'China': [104.2, 35.9], 'Japan': [138.3, 36.2], 'South Korea': [127.8, 36.5],
-            'India': [78.9, 20.6], 'Taiwan': [120.9, 23.7], 'Singapore': [103.8, 1.4],
-            'Hong Kong': [114.2, 22.3], 'Israel': [34.9, 31.5], 'Iran': [53.7, 32.4],
-            'Saudi Arabia': [45.1, 23.9], 'Pakistan': [69.3, 30.4], 'Bangladesh': [90.4, 23.7],
-            'Malaysia': [109.7, 4.2], 'Thailand': [100.9, 15.9], 'Indonesia': [113.9, -0.8],
-            'Philippines': [122.9, 12.9], 'Vietnam': [108.3, 14.1], 'Sri Lanka': [80.8, 7.9],
-            'Nepal': [84.1, 28.4], 'Myanmar': [96.5, 19.2], 'Mongolia': [103.8, 46.9],
-            'United Arab Emirates': [53.8, 23.4], 'Jordan': [36.2, 31.2],
-            'Lebanon': [35.5, 33.9], 'Kuwait': [47.5, 29.3], 'Qatar': [51.2, 25.4],
-            'Bahrain': [50.6, 26.2], 'Iraq': [43.7, 33.2], 'Oman': [57.5, 21.5],
-            'Egypt': [30.8, 26.8], 'Morocco': [-7.1, 31.8], 'Tunisia': [9.5, 34.0],
-            'Algeria': [2.6, 28.0], 'Libya': [17.2, 26.3], 'Ethiopia': [40.5, 9.1],
-            'South Africa': [25.1, -29.0], 'Nigeria': [8.7, 9.1], 'Kenya': [37.9, 0.0],
-            'Ghana': [-1.0, 7.9], 'Tanzania': [35.0, -6.4], 'Uganda': [32.3, 1.4],
-            'Cameroon': [12.4, 3.9], 'Sudan': [30.2, 15.6],
-            'Australia': [133.8, -25.7], 'New Zealand': [172.5, -41.5],
-            'North Korea': [127.5, 40.3], 'Cambodia': [104.9, 12.6],
-        };
-
-        // Load and cache world topology from CDN
-        if (!this._worldTopology) {
-            try {
-                const r = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
-                if (!r.ok) throw new Error('fetch failed');
-                this._worldTopology = await r.json();
-            } catch (e) {
-                container.innerHTML = '<p class="data-note" style="padding:1rem;">Map unavailable (network error).</p>';
-                return;
-            }
-        }
-
-        const W = 960, H = 500;
-        const projection = d3.geoMercator()
-            .scale(W / (2 * Math.PI) * 0.92)
-            .translate([W / 2, H / 1.58]);
-        const path = d3.geoPath().projection(projection);
-
-        const svg = d3.select(container)
-            .append('svg')
-            .attr('viewBox', `0 0 ${W} ${H}`)
-            .attr('preserveAspectRatio', 'xMidYMid meet')
-            .style('width', '100%')
-            .style('height', 'auto')
-            .style('display', 'block');
-
-        svg.append('rect').attr('width', W).attr('height', H).attr('fill', '#daeaf5');
-
-        const worldFeatures = topojson.feature(this._worldTopology, this._worldTopology.objects.countries);
-        svg.append('g').selectAll('path')
-            .data(worldFeatures.features)
-            .join('path')
-            .attr('d', path)
-            .attr('fill', '#c8d8e2')
-            .attr('stroke', '#a0b4be')
-            .attr('stroke-width', 0.4);
-
-        // Sort largest first so smaller circles render on top
-        const entries = Object.entries(geoTotals)
-            .filter(([c]) => CENTROIDS[c])
-            .sort((a, b) => b[1] - a[1]);
-
-        if (!entries.length) {
-            container.innerHTML = '<p class="data-note" style="padding:1rem;">No mappable location data.</p>';
-            return;
-        }
-
-        const maxN = entries[0][1];
-        const rScale = d3.scaleSqrt().domain([0, maxN]).range([0, 38]);
-
-        const tip = d3.select(container)
-            .append('div')
-            .style('position', 'absolute')
-            .style('background', 'rgba(15,30,50,0.9)')
-            .style('color', '#fff')
-            .style('padding', '5px 10px')
-            .style('border-radius', '4px')
-            .style('font-size', '0.82rem')
-            .style('pointer-events', 'none')
-            .style('white-space', 'nowrap')
-            .style('opacity', 0)
-            .style('z-index', 10);
-
-        svg.append('g').selectAll('circle')
-            .data(entries)
-            .join('circle')
-            .attr('cx', ([c]) => { const pt = projection(CENTROIDS[c]); return pt ? pt[0] : -9999; })
-            .attr('cy', ([c]) => { const pt = projection(CENTROIDS[c]); return pt ? pt[1] : -9999; })
-            .attr('r', ([, n]) => Math.max(3, rScale(n)))
-            .attr('fill', '#0072B2')
-            .attr('fill-opacity', 0.55)
-            .attr('stroke', '#004e80')
-            .attr('stroke-width', 0.7)
-            .style('cursor', 'default')
-            .on('mouseover', function(event, [c, n]) {
-                d3.select(this).attr('fill-opacity', 0.85);
-                tip.html(`<strong>${c}</strong><br>${n.toLocaleString()} papers`)
-                    .style('opacity', 1);
-            })
-            .on('mousemove', function(event) {
-                const rect = container.getBoundingClientRect();
-                tip.style('left', (event.clientX - rect.left + 12) + 'px')
-                   .style('top',  (event.clientY - rect.top  - 36) + 'px');
-            })
-            .on('mouseout', function() {
-                d3.select(this).attr('fill-opacity', 0.55);
-                tip.style('opacity', 0);
-            });
-    }
-
-    // ---- Geography Downloads ----
-
-    _renderGeoTrendChart() {
-        if (!this._geoTrendData) return;
-        const { normalizedGeo, years, top10 } = this._geoTrendData;
-
-        // Filter years by range
-        const minYr = this._geoTrendXMin || years[0];
-        const maxYr = this._geoTrendXMax || years[years.length - 1];
-
-        // Build full year range from 2005 to max data year
-        const lastYr = years[years.length - 1];
-        const allYears = [];
-        for (let y = 2005; y <= parseInt(lastYr); y++) allYears.push(String(y));
-
-        const filtered = allYears.filter(yr => yr >= minYr && yr <= maxYr);
-
-        const trendDatasets = top10.map((country, i) => ({
-            label: country,
-            data: filtered.map(yr => (normalizedGeo[yr] && normalizedGeo[yr][country]) || 0),
-            backgroundColor: chartManager.palette[i % chartManager.palette.length] + 'cc',
-            borderColor: chartManager.palette[i % chartManager.palette.length],
-            borderWidth: 1,
-        }));
-        chartManager.createStackedBarChart('geo-trend-chart', filtered, trendDatasets, 'Papers');
-
-        // Apply Y-axis overrides
-        const chart = chartManager.charts['geo-trend-chart'];
-        if (chart) {
-            if (this._geoTrendYMin != null) chart.options.scales.y.min = this._geoTrendYMin;
-            else delete chart.options.scales.y.min;
-            if (this._geoTrendYMax != null) chart.options.scales.y.max = this._geoTrendYMax;
-            else delete chart.options.scales.y.max;
-            chart.update();
-        }
-    }
-
-    _populateGeoYearSelects(dataYears) {
-        const xMinSel = document.getElementById('geo-trend-x-min');
-        const xMaxSel = document.getElementById('geo-trend-x-max');
-        if (!xMinSel || !xMaxSel) return;
-
-        const prevMin = xMinSel.value;
-        const prevMax = xMaxSel.value;
-
-        const lastYr = dataYears.length ? parseInt(dataYears[dataYears.length - 1]) : 2025;
-        const allYears = [];
-        for (let y = 2005; y <= lastYr; y++) allYears.push(String(y));
-
-        [xMinSel, xMaxSel].forEach((sel, idx) => {
-            sel.innerHTML = '';
-            const blank = document.createElement('option');
-            blank.value = '';
-            blank.textContent = idx === 0 ? '(start)' : '(end)';
-            sel.appendChild(blank);
-            allYears.forEach(yr => {
-                const opt = document.createElement('option');
-                opt.value = yr;
-                opt.textContent = yr;
-                sel.appendChild(opt);
-            });
+    /** Collaboration reach: map every author affiliation on the included papers. */
+    async _runReach() {
+        const papers = (this._authorAllPapers || []).filter(p => {
+            if (this._authorExcluded && this._authorExcluded.has(String(p.pmid))) return false;
+            if (this._authorActiveTypes && !(p.pub_types || []).some(t => this._authorActiveTypes.has(t))) return false;
+            return true;
         });
-
-        if (prevMin && allYears.includes(prevMin)) xMinSel.value = prevMin;
-        if (prevMax && allYears.includes(prevMax)) xMaxSel.value = prevMax;
-    }
-
-    _downloadGeo(chartId, format) {
-        const slug = this._geoSlug || 'journal';
-        const filename = `geo-${chartId.replace('geo-', '')}-${slug}`;
-
-        if (chartId === 'geo-map') {
-            this._downloadGeoMapImage(filename, format);
-            return;
-        }
-
-        const canvasId = `${chartId}-chart`;
-        const chart = chartManager.charts[canvasId];
-        if (!chart) return;
-
-        if (format === 'pdf') {
-            if (!window.jspdf) return;
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-            const pw = doc.internal.pageSize.getWidth();
-            const ph = doc.internal.pageSize.getHeight();
-            const imgW = pw - 20;
-            const imgH = Math.min(imgW * (chart.height / chart.width), ph - 28);
-            doc.setFontSize(11);
-            doc.text(`IMPACT — Geography: ${this._geoJournalName || slug}`, 10, 10);
-            doc.addImage(chart.toBase64Image('image/png', 1), 'PNG', 10, 16, imgW, imgH);
-            doc.save(`${filename}.pdf`);
-            return;
-        }
-        const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
-        const url = chart.toBase64Image(mime, 1);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${filename}.${format}`;
-        a.click();
-    }
-
-    _downloadGeoMapImage(filename, format) {
-        const container = document.getElementById('geo-map');
-        const svgEl = container && container.querySelector('svg');
-        if (!svgEl) return;
-
-        const svgClone = svgEl.cloneNode(true);
-        svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-        const serializer = new XMLSerializer();
-        const svgStr = serializer.serializeToString(svgClone);
-        const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(svgBlob);
-
-        const img = new Image();
-        const W = 1920, H = 1000;
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = W;
-            canvas.height = H;
-            const ctx = canvas.getContext('2d');
-            if (format === 'jpg') {
-                ctx.fillStyle = '#ffffff';
-                ctx.fillRect(0, 0, W, H);
-            }
-            ctx.drawImage(img, 0, 0, W, H);
-            URL.revokeObjectURL(url);
-
-            if (format === 'pdf') {
-                if (!window.jspdf) return;
-                const { jsPDF } = window.jspdf;
-                const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-                const pw = doc.internal.pageSize.getWidth();
-                const ph = doc.internal.pageSize.getHeight();
-                const imgW = pw - 20;
-                const imgH = Math.min(imgW * (H / W), ph - 28);
-                doc.setFontSize(11);
-                doc.text(`IMPACT — Geography: ${this._geoJournalName || 'journal'}`, 10, 10);
-                doc.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 16, imgW, imgH);
-                doc.save(`${filename}.pdf`);
+        const hint = document.getElementById('reach-hint');
+        const btn = document.getElementById('reach-run-btn');
+        if (!papers.length) { hint.textContent = 'No included papers to map.'; return; }
+        btn.disabled = true;
+        hint.style.display = '';
+        try {
+            const affils = await GeoTab.fetchAffiliations(papers.map(p => String(p.pmid)),
+                (done, total) => { hint.textContent = `Reading affiliations from PubMed: ${done.toLocaleString()} of ${total.toLocaleString()} papers…`; });
+            const located = papers.map(p => ({ year: p.year, ...GeoTab.placesOf(affils.get(String(p.pmid)) || []) }));
+            const label = document.getElementById('author-name-input').value.trim() || 'This researcher';
+            const data = GeoTab.aggregate(located, label);
+            data.papersLabel = 'Papers with a located author';
+            if (!Object.keys(data.papers).length) {
+                hint.textContent = 'PubMed lists no affiliations with a recognisable place on these papers.';
                 return;
             }
-            const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
-            const a = document.createElement('a');
-            a.href = canvas.toDataURL(mime, 0.95);
-            a.download = `${filename}.${format}`;
-            a.click();
-        };
-        img.src = url;
+            await this.reachTab.show(data, 'reach');
+        } catch (e) {
+            console.error('Reach error:', e);
+            hint.textContent = `Could not read affiliations: ${e.message}`;
+            hint.style.display = '';
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    _resetReach() {
+        const content = document.getElementById('reach-content');
+        const hint = document.getElementById('reach-hint');
+        if (content) content.style.display = 'none';
+        if (hint) { hint.textContent = ''; hint.style.display = 'none'; }
     }
 
     // ---- Author Metrics ----

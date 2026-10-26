@@ -493,6 +493,63 @@
                 </div>
             </div>
 
+            <div class="authors-chart-card" id="reach-card" style="margin-top:1.5rem;">
+                <h4>Collaboration reach</h4>
+                <p class="data-note" style="margin-top:0">Where this researcher's co-authors are: every author affiliation on the included papers, by country and US state, read from PubMed.</p>
+                <button id="reach-run-btn" class="download-btn">Map collaborators</button>
+                <p id="reach-hint" class="data-note"></p>
+                <div id="reach-content" style="display:none;">
+                    <div class="chart-controls geo-controls">
+                        <span class="chart-controls-label">Map:</span>
+                        <div class="toggle-group" id="reach-scope-toggle">
+                            <button class="toggle-btn active" data-scope="world">World</button>
+                            <button class="toggle-btn" data-scope="europe">Europe</button>
+                            <button class="toggle-btn" data-scope="us">United States</button>
+                        </div>
+                        <span class="chart-controls-label">Years:</span>
+                        <select id="reach-year-from" class="range-select"></select>
+                        <span class="range-separator">&ndash;</span>
+                        <select id="reach-year-to" class="range-select"></select>
+                    </div>
+                    <div class="chart-controls geo-controls">
+                        <span class="chart-controls-label">Compare with:</span>
+                        <select id="reach-compare-mode" class="range-select">
+                            <option value="none" selected>Nothing</option>
+                            <option value="all">All journals</option>
+                        </select>
+                        <span class="chart-controls-label">Count:</span>
+                        <div class="toggle-group" id="reach-measure-toggle">
+                            <button class="toggle-btn active" data-measure="n">Papers involving</button>
+                            <button class="toggle-btn" data-measure="f">Fractional</button>
+                        </div>
+                        <label class="geo-check"><input type="checkbox" id="reach-lines" checked> Collaboration lines</label>
+                    </div>
+                    <div class="metrics-row" id="reach-metrics-row"></div>
+                    <h4 id="reach-map-title" style="margin-top:0.5rem">Map</h4>
+                    <div id="reach-map" class="geo-map"></div>
+                    <p id="reach-map-note" class="data-note"></p>
+                    <div class="download-bar">
+                        <span class="download-label">Download:</span>
+                        <button class="download-btn" id="reach-map-dl-png">PNG</button>
+                        <button class="download-btn" id="reach-map-dl-pdf">PDF</button>
+                        <button class="download-btn" id="reach-regions-dl-csv">CSV</button>
+                    </div>
+                    <div class="geo-grid" style="margin-top:1rem;">
+                        <div>
+                            <h4 id="reach-region-title">Leading countries</h4>
+                            <div id="reach-region-table" class="geo-table-wrap"></div>
+                        </div>
+                        <div>
+                            <h4>Strongest collaborations</h4>
+                            <div id="reach-pair-table" class="geo-table-wrap"></div>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="height:360px; margin-top:1rem;">
+                        <canvas id="reach-trend-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
             <div id="author-papers-list" style="margin-top:1.5rem"></div>
         </div>
 
@@ -501,8 +558,8 @@
 
     <!-- ============ GEOGRAPHY ============ -->
     <section id="geography" class="section">
-        <h2>Geographic Breakdown</h2>
-        <p class="section-desc">Where are papers published? See how a journal's country distribution has changed over time, based on first-author affiliation.</p>
+        <h2>Geography and Collaboration</h2>
+        <p class="section-desc">Where are a journal's authors, and who works with whom? Counts every author's affiliation on the journal's citable papers, by country or US state, and compares the journal with all journals or with another journal.</p>
 
         <div id="geo-picker-wrap">
             <div class="section-label">Select a journal</div>
@@ -510,76 +567,67 @@
         </div>
 
         <div id="geo-content" style="display:none;">
+            <div class="chart-controls geo-controls">
+                <span class="chart-controls-label">Map:</span>
+                <div class="toggle-group" id="geo-scope-toggle">
+                    <button class="toggle-btn active" data-scope="world">World</button>
+                    <button class="toggle-btn" data-scope="europe">Europe</button>
+                    <button class="toggle-btn" data-scope="us">United States</button>
+                </div>
+                <span class="chart-controls-label">Years:</span>
+                <select id="geo-year-from" class="range-select"></select>
+                <span class="range-separator">&ndash;</span>
+                <select id="geo-year-to" class="range-select"></select>
+            </div>
+            <div class="chart-controls geo-controls">
+                <span class="chart-controls-label">Compare with:</span>
+                <select id="geo-compare-mode" class="range-select">
+                    <option value="all" selected>All journals</option>
+                    <option value="journal">Another journal…</option>
+                    <option value="none">Nothing</option>
+                </select>
+                <div id="geo-compare-picker-wrap" style="display:none; min-width:260px;"><div id="geo-compare-picker"></div></div>
+                <span class="chart-controls-label">Count:</span>
+                <div class="toggle-group" id="geo-measure-toggle">
+                    <button class="toggle-btn active" data-measure="n">Papers involving</button>
+                    <button class="toggle-btn" data-measure="f">Fractional</button>
+                </div>
+                <label class="geo-check"><input type="checkbox" id="geo-lines" checked> Collaboration lines</label>
+            </div>
+
             <div class="metrics-row" id="geo-metrics-row"></div>
 
             <div class="authors-chart-card" style="margin-bottom:1rem;">
-                <h4>Papers by Country — World Map (First Author, All Years)</h4>
-                <div id="geo-map" style="position:relative; width:100%; border-radius:6px; overflow:hidden;"></div>
-                <div class="download-bar" id="geo-map-download-bar" style="display:none;">
+                <h4 id="geo-map-title">Map</h4>
+                <div id="geo-map" class="geo-map"></div>
+                <p id="geo-map-note" class="data-note"></p>
+                <div class="download-bar">
                     <span class="download-label">Download:</span>
                     <button class="download-btn" id="geo-map-dl-png">PNG</button>
-                    <button class="download-btn" id="geo-map-dl-jpg">JPG</button>
                     <button class="download-btn" id="geo-map-dl-pdf">PDF</button>
+                    <button class="download-btn" id="geo-regions-dl-csv">CSV</button>
                 </div>
             </div>
 
-            <div class="authors-chart-card" style="margin-bottom:1rem;">
-                <h4>Papers by Country — Over Time (First Author)</h4>
-                <div id="geo-trend-range-controls" class="chart-range-controls" style="display:none">
-                    <div class="range-control-group">
-                        <span class="range-label">Year:</span>
-                        <select id="geo-trend-x-min" class="range-select"></select>
-                        <span class="range-separator">&ndash;</span>
-                        <select id="geo-trend-x-max" class="range-select"></select>
-                    </div>
-                    <div class="range-control-group">
-                        <span class="range-label">Y axis:</span>
-                        <input id="geo-trend-y-min" type="number" class="range-input" placeholder="min" step="1">
-                        <span class="range-separator">&ndash;</span>
-                        <input id="geo-trend-y-max" type="number" class="range-input" placeholder="max" step="1">
-                    </div>
-                    <button id="geo-trend-range-reset" class="range-reset-btn">Reset</button>
+            <div class="geo-grid">
+                <div class="authors-chart-card">
+                    <h4 id="geo-region-title">Leading countries</h4>
+                    <div id="geo-region-table" class="geo-table-wrap"></div>
                 </div>
+                <div class="authors-chart-card">
+                    <h4>Strongest collaborations</h4>
+                    <div id="geo-pair-table" class="geo-table-wrap"></div>
+                </div>
+            </div>
+
+            <div class="authors-chart-card" style="margin-top:1rem;">
                 <div class="chart-container" style="height:420px;">
                     <canvas id="geo-trend-chart"></canvas>
-                </div>
-                <div class="download-bar" id="geo-trend-download-bar" style="display:none;">
-                    <span class="download-label">Download:</span>
-                    <button class="download-btn" id="geo-trend-dl-png">PNG</button>
-                    <button class="download-btn" id="geo-trend-dl-jpg">JPG</button>
-                    <button class="download-btn" id="geo-trend-dl-pdf">PDF</button>
-                </div>
-            </div>
-
-            <div class="authors-charts-grid">
-                <div class="authors-chart-card">
-                    <h4>Top Countries Overall</h4>
-                    <div class="chart-container" style="margin-bottom:0;">
-                        <canvas id="geo-top-chart"></canvas>
-                    </div>
-                    <div class="download-bar" id="geo-top-download-bar" style="display:none;">
-                        <span class="download-label">Download:</span>
-                        <button class="download-btn" id="geo-top-dl-png">PNG</button>
-                        <button class="download-btn" id="geo-top-dl-jpg">JPG</button>
-                        <button class="download-btn" id="geo-top-dl-pdf">PDF</button>
-                    </div>
-                </div>
-                <div class="authors-chart-card">
-                    <h4>Country Share — Most Recent 3 Years</h4>
-                    <div class="chart-container" style="margin-bottom:0;">
-                        <canvas id="geo-recent-chart"></canvas>
-                    </div>
-                    <div class="download-bar" id="geo-recent-download-bar" style="display:none;">
-                        <span class="download-label">Download:</span>
-                        <button class="download-btn" id="geo-recent-dl-png">PNG</button>
-                        <button class="download-btn" id="geo-recent-dl-jpg">JPG</button>
-                        <button class="download-btn" id="geo-recent-dl-pdf">PDF</button>
-                    </div>
                 </div>
             </div>
         </div>
 
-        <p id="geo-hint" class="data-note" style="margin-top:1rem;">Select a journal above to see its geographic breakdown.</p>
+        <p id="geo-hint" class="data-note" style="margin-top:1rem;">Select a journal above to see where its authors are.</p>
     </section>
 
     <!-- ============ INFLUENCE ============ -->
@@ -821,9 +869,21 @@
 
             <h3>Authors and geography</h3>
             <p>
-                Before about 2014, PubMed recorded only the first author's affiliation, so last-author
-                and country counts for earlier years are incomplete. One affiliation parser now produces
-                all countries, so Geography values may differ from earlier releases.
+                Before about 2014, PubMed recorded only the first author's affiliation, so counts built from
+                other authors' affiliations are incomplete for earlier years. One affiliation parser produces
+                every country and US state, so Geography values may differ from earlier releases.
+            </p>
+            <p>
+                Geography counts a journal's citable items by publication year, using every author's
+                affiliations. A paper <em>involves</em> a country when at least one author is affiliated there,
+                and counts once for each country it involves; fractional credit instead splits the paper evenly
+                over its countries. US states work the same way over papers with a US affiliation. A pair of
+                countries or states counts the papers involving both; papers involving more than 10 are left
+                out of the pairs so that large consortia do not dominate them. A share is papers involving a
+                region divided by papers with a located affiliation in the chosen years, and comparisons show
+                the difference in percentage points. Collaboration reach in the Authors section applies the same
+                rules to one researcher's included papers, reading affiliations from PubMed. Institutions are not
+                resolved yet.
             </p>
             <p>
                 The complete document, with the code locations for every rule, is
@@ -848,11 +908,14 @@
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-<script src="js/data-loader.js?v=7"></script>
+<script src="js/data-loader.js?v=8"></script>
 <script src="js/chart-manager.js?v=8"></script>
 <script src="js/ui-helpers.js?v=4"></script>
 <script src="js/journal-picker.js?v=3"></script>
-<script src="js/app.js?v=39"></script>
+<script src="js/affil-places.js?v=1"></script>
+<script src="js/affil-location.js?v=1"></script>
+<script src="js/geo-tab.js?v=1"></script>
+<script src="js/app.js?v=40"></script>
 
 </body>
 </html>

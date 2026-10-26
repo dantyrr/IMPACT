@@ -49,6 +49,11 @@ class DataLoader {
         return this._fetch(`${this.baseUrl}/authors/${slug}.json`);
     }
 
+    /** Per-journal geography counts (geo/_all.json is all journals together). */
+    async loadGeo(slug) {
+        return this._fetch(`${this.baseUrl}/geo/${slug}.json`);
+    }
+
     async loadPapers(slug) {
         return this._fetch(`${this.baseUrl}/papers/${slug}.json`);
     }
