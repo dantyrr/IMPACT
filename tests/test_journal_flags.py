@@ -5,7 +5,8 @@ from datetime import date
 import pytest
 
 from src.pipeline.db_manager import DatabaseManager
-from src.pipeline.journal_flags import compute_flags, decode_deltas, encode_deltas, settled_point
+from src.pipeline.journal_flags import (compute_flags, decode_deltas, encode_deltas, settled_point,
+                                        settled_rates)
 from src.pipeline.json_exporter import JSONExporter
 
 
@@ -76,6 +77,19 @@ def test_settled_point_selection():
 
 def test_settled_point_year_wrap():
     assert settled_point([{"month": "2025-01"}, {"month": "2025-02"}], date(2026, 1, 5))["month"] == "2025-01"
+
+
+def test_settled_rates_reads_the_settled_point():
+    ts = [{"month": "2025-10", "rolling_if": 34.5, "rolling_if_no_reviews": 33.7},
+          {"month": "2026-10", "rolling_if": 11.5, "rolling_if_no_reviews": 11.4}]
+    assert settled_rates(ts, AS_OF) == {"settled_month": "2025-10", "settled_if": 34.5,
+                                        "settled_if_no_reviews": 33.7}
+
+
+def test_settled_rates_none_when_nothing_settled():
+    ts = [{"month": "2026-10", "rolling_if": 11.5, "rolling_if_no_reviews": 11.4}]
+    assert settled_rates(ts, AS_OF) == {"settled_month": None, "settled_if": None,
+                                        "settled_if_no_reviews": None}
 
 
 def test_no_qualifying_point_gives_no_flags(tmp_path):

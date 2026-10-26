@@ -151,7 +151,7 @@ Countries are parsed from affiliation strings by one parser (`src/pipeline/affil
 3. **Short research formats.** See "Short research formats" above.
 4. **Dates.** Using the electronic date means a paper can fall in a different window than its print date would give. Papers with only a year are placed in June.
 5. **Self-citations** are not excluded.
-6. **Recent months.** The newest citation windows are incomplete because citing papers appear in iCite with a delay. Flags use only settled months for this reason.
+6. **Recent months.** The newest citation windows are incomplete because citing papers appear in iCite with a delay, so the rate for recent months reads low. A month is settled once its citation window ended at least 12 months before the export month. The headline rate, its 24-month research and review averages, the paper counts and the flags all come from the latest settled month. The charts still draw the months after it, faded under a grey band marked Provisional.
 
 ---
 

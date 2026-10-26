@@ -422,3 +422,14 @@ def test_byline_failure_rolls_back_paper_insert(env, monkeypatch):
     for pmid in (3001, 3002, 3003, 3004):
         assert _paper(env, pmid) is None
     assert _paper(env, 500)["first_author_name"] is None
+
+
+def test_update_index_copies_settled_rates(tmp_path):
+    (tmp_path / "index.json").write_text(json.dumps(
+        {"journals": [{"slug": "j", "latest_if": 1.0, "settled_if": 9.0}]}))
+    weekly.update_index(str(tmp_path), {"j": {
+        "rolling_if": 11.5, "rolling_if_no_reviews": 11.4, "paper_count": 10, "month": "2026-10",
+        "flags": [], "settled_month": "2025-10", "settled_if": 34.5, "settled_if_no_reviews": 33.7}})
+    entry = json.loads((tmp_path / "index.json").read_text())["journals"][0]
+    assert entry["latest_if"] == 11.5
+    assert (entry["settled_month"], entry["settled_if"], entry["settled_if_no_reviews"]) == ("2025-10", 34.5, 33.7)

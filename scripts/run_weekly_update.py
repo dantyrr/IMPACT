@@ -46,7 +46,7 @@ from src.pipeline.class_inputs import fetch_bylines, write_bylines
 from src.pipeline.db_manager import DatabaseManager
 from src.pipeline.doc_class import classify, icite_evidence
 from src.pipeline.json_exporter import JSONExporter
-from src.pipeline.journal_flags import flags_for_timeseries
+from src.pipeline.journal_flags import flags_for_timeseries, settled_rates
 from src.pipeline.impact_calculator import ImpactCalculator
 from src.pipeline.pubmed_full_db import (
     make_byline_scope, open_full_db, store_records, tracked_issns_from_impact,
@@ -402,7 +402,8 @@ def update_journal_snapshot(db, calc, journal_id, slug, name, issn,
     exporter = JSONExporter(data_dir=data_dir, journals_dir=journals_dir)
     exporter.export_journal_classes(slug, db.get_paper_classes_for_journal(journal_id))
 
-    return {**raw_snapshots["timeseries"], "flags": flags}
+    return {**raw_snapshots["timeseries"], "flags": flags,
+            **settled_rates(existing["timeseries"], now.date())}
 
 
 def update_index(data_dir, dirty_journals_data):
@@ -429,6 +430,9 @@ def update_index(data_dir, dirty_journals_data):
             entry["latest_month"] = snapshot["month"]
             if "flags" in snapshot:
                 entry["flags"] = snapshot["flags"]
+            for key in ("settled_month", "settled_if", "settled_if_no_reviews"):
+                if key in snapshot:
+                    entry[key] = snapshot[key]
             updated += 1
 
     index["generated"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")

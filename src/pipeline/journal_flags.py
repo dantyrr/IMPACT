@@ -18,6 +18,16 @@ def settled_point(timeseries: List[Dict], as_of: date) -> Optional[Dict]:
     return max(ok, key=lambda p: p["month"]) if ok else None
 
 
+def settled_rates(timeseries: List[Dict], as_of: date) -> Dict:
+    """Headline rates at the settled point (later months are still collecting citations)."""
+    point = settled_point(timeseries, as_of)
+    return {
+        "settled_month": point["month"] if point else None,
+        "settled_if": point["rolling_if"] if point else None,
+        "settled_if_no_reviews": point["rolling_if_no_reviews"] if point else None,
+    }
+
+
 def compute_flags(point: Dict) -> List[str]:
     by_type = point.get("by_type") or {}
     research = (by_type.get("research") or {}).get("papers", 0)

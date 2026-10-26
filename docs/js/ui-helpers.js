@@ -10,6 +10,11 @@ const UIHelpers = {
         return div.innerHTML;
     },
 
+    /** An index entry's headline rate: the settled month's, else the latest (still collecting citations). */
+    headlineRate(journal) {
+        return journal.settled_if != null ? journal.settled_if : journal.latest_if;
+    },
+
     formatIF(value) {
         if (value == null || isNaN(value)) return '—';
         return Number(value).toFixed(2);
@@ -86,7 +91,7 @@ const UIHelpers = {
         card.innerHTML = `
             <h4>${journal.name}</h4>
             <div class="card-if">
-                ${this.formatIF(journal.latest_if)}
+                ${this.formatIF(this.headlineRate(journal))}
                 <small>24-mo citation rate</small>
             </div>
             <div class="card-stats">

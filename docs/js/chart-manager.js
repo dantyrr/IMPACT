@@ -739,12 +739,20 @@ class ChartManager {
         let allMonths = [...new Set(series.flatMap(s => s.months))].sort();
         allMonths = this._expandMonthRange(allMonths, scaleOverrides);
 
+        // Months after a series' settled month are provisional: citations are still
+        // arriving, so the line fades and a grey band covers the unsettled stretch.
+        const isProvisional = (s, month) => !!s.settledMonth && month > s.settledMonth;
+        const settledMonths = series.map(s => s.settledMonth).filter(Boolean).sort();
+        const bandFrom = settledMonths.length ? settledMonths[0] : null;
+        const hasProvisional = bandFrom !== null && allMonths.some(m => m > bandFrom);
+
         const datasets = series.map(s => {
             const monthToIdx = new Map(s.months.map((m, i) => [m, i]));
             const data = allMonths.map(m => {
                 const i = monthToIdx.get(m);
                 return i !== undefined ? s.values[i] : null;
             });
+            const faded = this._fade(s.color, 0.35);
             return {
                 label: s.label,
                 data,
@@ -756,23 +764,53 @@ class ChartManager {
                 pointRadius: 0,
                 pointHoverRadius: 5,
                 spanGaps: true,
+                segment: {
+                    borderColor: c => isProvisional(s, allMonths[c.p1DataIndex]) ? faded : undefined,
+                },
+                _series: s,
             };
         });
+
+        const provisionalBand = {
+            id: 'provisionalBand',
+            beforeDatasetsDraw: (chart) => {
+                if (!hasProvisional) return;
+                const { ctx: c, chartArea: a, scales: { x } } = chart;
+                const left = Math.max(a.left, Math.min(a.right, x.getPixelForValue(allMonths.indexOf(bandFrom))));
+                if (left >= a.right) return;
+                c.save();
+                c.fillStyle = 'rgba(128, 128, 128, 0.14)';
+                c.fillRect(left, a.top, a.right - left, a.bottom - a.top);
+                c.fillStyle = Chart.defaults.color;
+                c.font = '11px sans-serif';
+                c.textAlign = 'right';
+                c.fillText('Provisional', a.right - 4, a.top + 12);
+                c.restore();
+            },
+        };
 
         this.charts[canvasId] = new Chart(ctx, {
             type: 'line',
             data: { labels: allMonths, datasets },
+            plugins: [provisionalBand],
             options: {
                 responsive: true,
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     title: { display: true, text: 'Citation Rate Trends', font: { size: 14 } },
+                    subtitle: {
+                        display: hasProvisional,
+                        text: 'Shaded months are provisional: citations to them are still arriving, so they read low.',
+                        font: { size: 11 },
+                    },
                     legend: { position: 'bottom' },
                     tooltip: {
                         callbacks: {
                             label: (ctx) => {
                                 const v = ctx.parsed.y;
-                                return v != null ? `${ctx.dataset.label}: ${v.toFixed(2)}` : null;
+                                if (v == null) return null;
+                                const tag = isProvisional(ctx.dataset._series, allMonths[ctx.dataIndex]) ? ' (provisional)' : '';
+                                return `${ctx.dataset.label}: ${v.toFixed(2)}${tag}`;
                             }
                         }
                     }
@@ -1033,6 +1071,13 @@ class ChartManager {
         if (Object.keys(xOvr).length === 0) delete scaleOverrides.x;
 
         return full;
+    }
+
+    /** '#rrggbb' as rgba with the given alpha; other colour strings pass through. */
+    _fade(color, alpha) {
+        const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color || '');
+        if (!m) return color;
+        return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})`;
     }
 
     _destroy(canvasId) {

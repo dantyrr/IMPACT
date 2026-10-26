@@ -129,7 +129,7 @@ class IMPACTApp {
             const tr = document.createElement('tr');
             tr.dataset.slug = journal.slug;
             tr.className = 'journal-list-row';
-            const rate = journal.latest_if != null ? Number(journal.latest_if).toFixed(2) : '—';
+            const rate = UIHelpers.formatIF(UIHelpers.headlineRate(journal));
             const papers = journal.paper_count != null ? journal.paper_count.toLocaleString() : '—';
             tr.innerHTML = `<td class="jl-name">${UIHelpers.escapeHtml(journal.name)}</td><td class="jl-rate">${rate}</td><td class="jl-papers">${papers}</td>`;
             tr.addEventListener('click', () => this.showJournalDetail(journal.slug));
@@ -366,6 +366,8 @@ class IMPACTApp {
                     });
                 }
             }
+            const settledMonth = this._settledMonth(jData);
+            series.forEach(s => { if (s.settledMonth === undefined) s.settledMonth = settledMonth; });
         });
 
         this._jcSeriesData = series;
@@ -601,13 +603,17 @@ class IMPACTApp {
     }
 
     /**
-     * Headline numbers for a journal's metric cards, from its 24-month timeseries.
-     * Rates for research and reviews are averaged over the last 24 snapshots; paper
-     * counts come from the latest snapshot's window. The headline rate is the
-     * exported rolling_if: citations to citable items / citable items.
+     * Headline numbers for a journal's metric cards, from its 24-month timeseries,
+     * taken at the settled month (_settledMonth) because later months are still
+     * collecting citations. Rates for research and reviews are averaged over the 24
+     * snapshots ending there; paper counts come from that snapshot's window. The
+     * headline rate is the exported rolling_if: citations to citable items /
+     * citable items. Falls back to the latest snapshot when none has settled.
      */
     _journalSummary(j) {
-        const ts = j.timeseries || [];
+        const all = j.timeseries || [];
+        const settled = this._settledMonth(j);
+        const ts = settled ? all.filter(d => d.month <= settled) : all;
         const last24 = ts.slice(-24);
         const lastEntry = ts.length > 0 ? ts[ts.length - 1] : null;
         const bt = lastEntry && lastEntry.by_type ? lastEntry.by_type : {};
@@ -727,7 +733,7 @@ class IMPACTApp {
             // Title
             document.getElementById('detail-title').textContent = data.journal;
 
-            // Metrics: headline rate from the latest snapshot, 24-mo averaged type rates
+            // Metrics: headline rate from the settled snapshot, 24-mo averaged type rates
             const latest = data.latest || {};
             const sm = this._journalSummary(data);
             const { avgResRate, avgRevRate, researchPapers, reviewPapers, reviewPct } = sm;
@@ -989,7 +995,7 @@ class IMPACTApp {
                 months,
                 values,
             });
-            return series;
+            return this._withSettledMonth(series, data);
         }
 
         // Multiple types checked: combined and/or individual lines
@@ -1019,6 +1025,13 @@ class IMPACTApp {
             });
         }
 
+        return this._withSettledMonth(series, data);
+    }
+
+    /** Tag rate series with the journal's settled month; later months chart as provisional. */
+    _withSettledMonth(series, data) {
+        const settledMonth = this._settledMonth(data);
+        series.forEach(s => { s.settledMonth = settledMonth; });
         return series;
     }
 
@@ -3700,7 +3713,7 @@ class IMPACTApp {
                     journalRate = rateInfo.rate;
                     journalRateMonth = rateInfo.month;
                 } else {
-                    journalRate = journalMatch.latest_if;
+                    journalRate = UIHelpers.headlineRate(journalMatch);
                 }
             }
 
@@ -4017,7 +4030,7 @@ class IMPACTApp {
                 name: j.name,
                 abbr: j.abbreviation,
                 issn: j.issn,
-                latest_if: j.latest_if,
+                latest_if: UIHelpers.headlineRate(j),
             })),
             [
                 { key: 'name', label: 'Journal' },

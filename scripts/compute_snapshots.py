@@ -36,7 +36,7 @@ def process_journals(journal_chunk, db_path, worker_id):
     from src.pipeline.db_manager import DatabaseManager
     from src.pipeline.impact_calculator import ImpactCalculator
     from src.pipeline.json_exporter import JSONExporter
-    from src.pipeline.journal_flags import flags_for_timeseries
+    from src.pipeline.journal_flags import flags_for_timeseries, settled_rates
 
     log = logging.getLogger(f"compute.w{worker_id}")
     db = DatabaseManager(db_path)
@@ -90,6 +90,7 @@ def process_journals(journal_chunk, db_path, worker_id):
         exporter.export_journal_papers(slug, paper_rows, geo_rows, cits_by_year,
                                        cits_by_month, journal_monthly_cits)
 
+        formatted = exporter._format_timeseries(timeseries)
         index_entries.append({
             "slug": slug,
             "name": name,
@@ -99,7 +100,8 @@ def process_journals(journal_chunk, db_path, worker_id):
             "latest_if_no_reviews": latest["rolling_if_no_reviews"],
             "paper_count": latest["paper_count"],
             "latest_month": latest["month"],
-            "flags": flags_for_timeseries(exporter._format_timeseries(timeseries), date.today()),
+            "flags": flags_for_timeseries(formatted, date.today()),
+            **settled_rates(formatted, date.today()),
         })
 
     db.close()
