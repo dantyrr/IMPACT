@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IMPACT — Studying Publication Bias, Impact Factor Inflation &amp; H-Index Gaming</title>
-    <link rel="stylesheet" href="css/style.css?v=10">
+    <link rel="stylesheet" href="css/style.css?v=11">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -72,6 +72,7 @@
                         <button class="toggle-btn" data-y="zero">From Zero</button>
                     </div>
                 </div>
+                <div class="chart-controls marker-controls" id="jc-marker-controls"></div>
 
                 <div id="jc-picker"></div>
 
@@ -163,36 +164,7 @@
             <button class="back-btn" id="back-to-list">&larr; Back to list</button>
             <h3 id="detail-title"></h3>
 
-            <div class="metrics-row">
-                <div class="metric-card">
-                    <span class="metric-value" id="metric-citable-rate">—</span>
-                    <span class="metric-label" id="metric-citable-rate-label">Citation Rate (citable items)</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="metric-research-rate">—</span>
-                    <span class="metric-label" id="metric-research-rate-label">Research Rate</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="metric-review-rate">—</span>
-                    <span class="metric-label" id="metric-review-rate-label">Review Rate</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="metric-citable-papers">—</span>
-                    <span class="metric-label" id="metric-citable-papers-label">Citable Items</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="metric-research-papers">—</span>
-                    <span class="metric-label" id="metric-research-papers-label">Research Papers</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="metric-review-papers">—</span>
-                    <span class="metric-label" id="metric-review-papers-label">Review Papers</span>
-                </div>
-                <div class="metric-card">
-                    <span class="metric-value" id="metric-review-pct">—</span>
-                    <span class="metric-label" id="metric-review-pct-label">Review %</span>
-                </div>
-            </div>
+            <div class="metrics-row" id="detail-metrics"></div>
             <div id="journal-flags" style="display:none;"></div>
 
             <div class="chart-controls">
@@ -230,6 +202,7 @@
                     <button class="toggle-btn" data-y="zero">From Zero</button>
                 </div>
             </div>
+            <div class="chart-controls marker-controls" id="detail-marker-controls"></div>
 
             <div id="detail-range-controls" class="chart-range-controls" style="display:none">
                 <div class="range-control-group">
@@ -848,9 +821,10 @@
             <h3>Settled and provisional months</h3>
             <p>
                 Citing papers reach iCite with a delay, so the newest months are still collecting citations and read low.
-                A month is settled once its 12-month citation window ended at least 12 months ago. Headline rates, their
-                24-month averages, paper counts and flags use the latest settled month. Charts draw the later months faded,
-                under a grey band marked Provisional.
+                A month is settled once its 12-month citation window ended at least 12 months ago. The metric cards
+                (the citation rate, the research and review rates, and the paper counts) and the flags use the latest
+                settled month of the selected window, so each card matches the chart line at that month. Charts draw the
+                later months faded, under a grey band marked Provisional.
             </p>
 
             <h3>Reliability flags</h3>
@@ -909,13 +883,13 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 <script src="js/data-loader.js?v=8"></script>
-<script src="js/chart-manager.js?v=8"></script>
+<script src="js/chart-manager.js?v=9"></script>
 <script src="js/ui-helpers.js?v=4"></script>
 <script src="js/journal-picker.js?v=3"></script>
 <script src="js/affil-places.js?v=1"></script>
 <script src="js/affil-location.js?v=1"></script>
 <script src="js/geo-tab.js?v=1"></script>
-<script src="js/app.js?v=40"></script>
+<script src="js/app.js?v=41"></script>
 
 </body>
 </html>

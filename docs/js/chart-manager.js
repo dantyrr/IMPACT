@@ -26,6 +26,10 @@ const DOC_CATEGORY_DASHES = {
 class ChartManager {
     constructor() {
         this.charts = {};
+        // Dashed vertical marker lines on the rate charts: jcr marks each June
+        // (when Clarivate releases the JIF); dates holds viewer-chosen
+        // 'YYYY-MM' or 'YYYY-MM-DD' strings. Set by the app's marker controls.
+        this.markers = { jcr: false, dates: [] };
         // Okabe-Ito colorblind-safe palette (Nature Methods recommended)
         // Yellow (#F0E442) and black replaced with purple and gray for web legibility
         this.palette = [
@@ -789,18 +793,23 @@ class ChartManager {
             },
         };
 
+        const markerLines = this._markerLinesPlugin(allMonths);
+
         this.charts[canvasId] = new Chart(ctx, {
             type: 'line',
             data: { labels: allMonths, datasets },
-            plugins: [provisionalBand],
+            plugins: [provisionalBand, markerLines],
             options: {
                 responsive: true,
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     title: { display: true, text: 'Citation Rate Trends', font: { size: 14 } },
                     subtitle: {
-                        display: hasProvisional,
-                        text: 'Shaded months are provisional: citations to them are still arriving, so they read low.',
+                        display: hasProvisional || this.markers.jcr,
+                        text: [
+                            hasProvisional ? 'Shaded months are provisional: citations to them are still arriving, so they read low.' : '',
+                            this.markers.jcr ? 'Dashed lines mark each June, when Clarivate releases the JCR Impact Factor for the previous year.' : '',
+                        ].filter(Boolean),
                         font: { size: 11 },
                     },
                     legend: { position: 'bottom' },
@@ -1074,6 +1083,57 @@ class ChartManager {
     }
 
     /** '#rrggbb' as rgba with the given alpha; other colour strings pass through. */
+    /** Marker dates for a month axis: [{month, frac, label}], frac = position within the month. */
+    _markerPoints(allMonths) {
+        const points = [];
+        if (this.markers.jcr && allMonths.length) {
+            const first = +allMonths[0].slice(0, 4), last = +allMonths[allMonths.length - 1].slice(0, 4);
+            for (let y = first; y <= last; y++) points.push({ month: `${y}-06`, frac: 0, label: null });
+        }
+        for (const d of this.markers.dates) {
+            const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(d);
+            if (!m) continue;
+            const days = new Date(+m[1], +m[2], 0).getDate();
+            points.push({ month: `${m[1]}-${m[2]}`, frac: m[3] ? (+m[3] - 1) / days : 0, label: d });
+        }
+        return points;
+    }
+
+    /** Chart.js plugin drawing the marker points as dashed vertical lines. */
+    _markerLinesPlugin(allMonths) {
+        const points = this._markerPoints(allMonths);
+        const index = new Map(allMonths.map((m, i) => [m, i]));
+        return {
+            id: 'markerLines',
+            afterDatasetsDraw: (chart) => {
+                if (!points.length) return;
+                const { ctx: c, chartArea: a, scales: { x } } = chart;
+                c.save();
+                c.setLineDash([5, 4]);
+                c.lineWidth = 1.25;
+                c.fillStyle = 'rgba(30, 30, 30, 0.95)';
+                c.font = '10px sans-serif';
+                c.textAlign = 'left';
+                for (const p of points) {
+                    const i = index.get(p.month);
+                    if (i === undefined) continue;
+                    const x0 = x.getPixelForValue(i);
+                    const x1 = index.has(allMonths[i + 1]) ? x.getPixelForValue(i + 1) : x0;
+                    const px = x0 + p.frac * (x1 - x0);
+                    if (px < a.left || px > a.right) continue;
+                    // JCR lines grey, the viewer's own lines near-black
+                    c.strokeStyle = p.label ? 'rgba(30, 30, 30, 0.85)' : 'rgba(128, 128, 128, 0.7)';
+                    c.beginPath();
+                    c.moveTo(px, a.top);
+                    c.lineTo(px, a.bottom);
+                    c.stroke();
+                    if (p.label) c.fillText(p.label, px + 3, a.top + 24);
+                }
+                c.restore();
+            },
+        };
+    }
+
     _fade(color, alpha) {
         const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color || '');
         if (!m) return color;

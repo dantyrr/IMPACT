@@ -163,7 +163,7 @@ Institutions are not resolved yet: an affiliation counts for its country and sta
 3. **Short research formats.** See "Short research formats" above.
 4. **Dates.** Using the electronic date means a paper can fall in a different window than its print date would give. Papers with only a year are placed in June.
 5. **Self-citations** are not excluded.
-6. **Recent months.** The newest citation windows are incomplete because citing papers appear in iCite with a delay, so the rate for recent months reads low. A month is settled once its citation window ended at least 12 months before the export month. The headline rate, its 24-month research and review averages, the paper counts and the flags all come from the latest settled month. The charts still draw the months after it, faded under a grey band marked Provisional.
+6. **Recent months.** The newest citation windows are incomplete because citing papers appear in iCite with a delay, so the rate for recent months reads low. A month is settled once its citation window ended at least 12 months before the export month. The headline rate, the research and review rates, the paper counts and the flags all come from the latest settled month; each card is that month's rolling rate for the selected window, the same value the chart shows there. The charts still draw the months after it, faded under a grey band marked Provisional.
 
 ---
 

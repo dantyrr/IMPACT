@@ -2,6 +2,21 @@
  * IMPACT App — Main application logic.
  */
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// Paper window per timeseries variant: pw months, ending skip months before the
+// month preceding the 12-month citation window (impact_calculator).
+const WINDOW_PARAMS = {
+    timeseries: { pw: 24, skip: 0 },
+    timeseries_12mo: { pw: 12, skip: 0 },
+    timeseries_5yr: { pw: 60, skip: 12 },
+};
+const MARKERS_KEY = 'impact-chart-markers';
+const WINDOW_NAMES = {
+    timeseries: '24-month window',
+    timeseries_12mo: '12-month window',
+    timeseries_5yr: '5-year window (yr 2–6)',
+};
+
 class IMPACTApp {
     constructor() {
         this.journals = [];
@@ -52,6 +67,7 @@ class IMPACTApp {
             this.renderJournalList(this.journals);
             this.setupSearch();
             this.setupJournalTrendsPanel();
+            this.setupChartMarkers();
             this.setupCitationNetwork();
             this.setupAuthorSearch();
             this.setupGeography();
@@ -156,6 +172,83 @@ class IMPACTApp {
     }
 
     // ---- Journal Trends Comparison ----
+
+    // ---- Chart markers ----
+
+    /**
+     * Dashed vertical marker lines on the rate charts (chartManager.markers):
+     * a JCR-release toggle (each June) and viewer-chosen months or days. One
+     * shared set for the Journals and journal detail charts, remembered in
+     * this browser.
+     */
+    setupChartMarkers() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(MARKERS_KEY) || 'null');
+            if (saved && typeof saved === 'object') {
+                chartManager.markers.jcr = !!saved.jcr;
+                chartManager.markers.dates = Array.isArray(saved.dates)
+                    ? saved.dates.filter(d => this._parseMarkerDate(d)) : [];
+            }
+        } catch (e) { /* storage unavailable: start empty */ }
+        this._renderMarkerControls();
+    }
+
+    /** 'YYYY-MM' or 'YYYY-MM-DD' (zero-padded, a real date) -> normalized string, else null. */
+    _parseMarkerDate(text) {
+        const m = /^\s*(\d{4})-(\d{1,2})(?:-(\d{1,2}))?\s*$/.exec(text || '');
+        if (!m) return null;
+        const y = +m[1], mo = +m[2];
+        if (mo < 1 || mo > 12) return null;
+        const pad = n => String(n).padStart(2, '0');
+        if (m[3] === undefined) return `${y}-${pad(mo)}`;
+        const d = +m[3];
+        if (d < 1 || d > new Date(y, mo, 0).getDate()) return null;
+        return `${y}-${pad(mo)}-${pad(d)}`;
+    }
+
+    _renderMarkerControls() {
+        const mk = chartManager.markers;
+        const esc = UIHelpers.escapeHtml;
+        ['jc', 'detail'].forEach(prefix => {
+            const el = document.getElementById(`${prefix}-marker-controls`);
+            if (!el) return;
+            el.innerHTML = `
+                <span class="chart-controls-label">Mark:</span>
+                <label class="marker-jcr"><input type="checkbox" ${mk.jcr ? 'checked' : ''}> JCR release (each June)
+                    <span class="metric-info" data-tooltip="Clarivate releases the Journal Impact Factor each June (usually mid to late June), covering citations from the previous calendar year. That JIF corresponds to the December point of the year before on the 24-month line.">ⓘ</span></label>
+                <input type="text" class="marker-input" placeholder="YYYY-MM or YYYY-MM-DD" aria-label="Month or day to mark">
+                <button class="range-reset-btn marker-add">Add line</button>
+                <span class="marker-error" hidden>Use YYYY-MM or YYYY-MM-DD</span>
+                ${mk.dates.map(d => `<span class="marker-chip">${esc(d)}<button data-date="${esc(d)}" aria-label="Remove ${esc(d)}">×</button></span>`).join('')}`;
+            el.querySelector('.marker-jcr input').addEventListener('change', e => {
+                mk.jcr = e.target.checked;
+                this._markersChanged();
+            });
+            const input = el.querySelector('.marker-input');
+            const add = () => {
+                const d = this._parseMarkerDate(input.value);
+                el.querySelector('.marker-error').hidden = !!d;
+                if (!d) return;
+                if (!mk.dates.includes(d)) mk.dates = [...mk.dates, d].sort();
+                this._markersChanged();
+            };
+            el.querySelector('.marker-add').addEventListener('click', add);
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') add(); });
+            el.querySelectorAll('.marker-chip button').forEach(b => b.addEventListener('click', () => {
+                mk.dates = mk.dates.filter(d => d !== b.dataset.date);
+                this._markersChanged();
+            }));
+        });
+    }
+
+    _markersChanged() {
+        try {
+            localStorage.setItem(MARKERS_KEY, JSON.stringify(chartManager.markers));
+        } catch (e) { /* not remembered; still drawn */ }
+        this._renderMarkerControls();
+        if (chartManager.charts['jc-chart']) this.updateJournalsTrendsChart();
+        if (chartManager.charts['journal-chart'] && this._redrawDetailRate) this._redrawDetailRate();
+    }
 
     setupJournalTrendsPanel() {
         this.jcPicker = new JournalPicker(
@@ -601,34 +694,21 @@ class IMPACTApp {
     }
 
     /**
-     * Headline numbers for a journal's metric cards, from its 24-month timeseries,
-     * taken at the settled month (_settledMonth) because later months are still
-     * collecting citations. Rates for research and reviews are averaged over the 24
-     * snapshots ending there; paper counts come from that snapshot's window. The
-     * headline rate is the exported rolling_if: citations to citable items /
-     * citable items. Falls back to the latest snapshot when none has settled.
+     * Headline numbers for a journal's metric cards, read from one point of the
+     * selected window's timeseries: the settled month (_settledMonth), because
+     * later months are still collecting citations. Every rate is that point's
+     * rolling rate, the same value the chart line shows at that month: the
+     * headline is the exported rolling_if (citations to citable items / citable
+     * items), the research and review rates restrict both sides to that type.
+     * Falls back to the latest point when none has settled.
      */
-    _journalSummary(j) {
-        const all = j.timeseries || [];
+    _journalSummary(j, windowKey = 'timeseries') {
+        const all = j[windowKey] || j.timeseries || [];
         const settled = this._settledMonth(j);
         const ts = settled ? all.filter(d => d.month <= settled) : all;
-        const last24 = ts.slice(-24);
         const lastEntry = ts.length > 0 ? ts[ts.length - 1] : null;
         const bt = lastEntry && lastEntry.by_type ? lastEntry.by_type : {};
-
-        let resRateSum = 0, resRateN = 0;
-        let revRateSum = 0, revRateN = 0;
-        for (const entry of last24) {
-            const ebt = entry.by_type || {};
-            if (ebt.research && ebt.research.papers > 0) {
-                resRateSum += ebt.research.citations / ebt.research.papers;
-                resRateN++;
-            }
-            if (ebt.review && ebt.review.papers > 0) {
-                revRateSum += ebt.review.citations / ebt.review.papers;
-                revRateN++;
-            }
-        }
+        const typeRate = k => (bt[k] && bt[k].papers > 0 ? bt[k].citations / bt[k].papers : null);
 
         const papersOf = k => (bt[k] ? bt[k].papers || 0 : 0);
         const researchPapers = papersOf('research');
@@ -637,14 +717,52 @@ class IMPACTApp {
         const citablePapers = lastEntry && lastEntry.citable_papers !== undefined
             ? lastEntry.citable_papers
             : CITABLE_CATEGORIES.reduce((a, k) => a + papersOf(k), 0);
+        const month = lastEntry ? lastEntry.month : null;
         return {
-            lastEntry,
+            lastEntry, month,
+            windows: this._windowRanges(month, windowKey),
             rate: lastEntry ? lastEntry.rolling_if : null,
-            avgResRate: resRateN > 0 ? resRateSum / resRateN : null,
-            avgRevRate: revRateN > 0 ? revRateSum / revRateN : null,
+            researchRate: typeRate('research'),
+            reviewRate: typeRate('review'),
             researchPapers, reviewPapers, totalPapers, citablePapers,
             reviewPct: totalPapers > 0 ? (reviewPapers / totalPapers * 100) : null,
         };
+    }
+
+    /**
+     * Metric cards for a _journalSummary, as HTML. Each card names its month
+     * and window, with an info tooltip giving the exact paper and citation
+     * windows.
+     */
+    _metricCardsHtml(sm, windowKey) {
+        const w = sm.windows;
+        const winName = WINDOW_NAMES[windowKey] || WINDOW_NAMES.timeseries;
+        const when = sm.month ? `${this._monthName(sm.month)} · ${winName}` : winName;
+        const papersWhen = w ? `published ${w.papers}` : '';
+        const rateTip = (what) => w
+            ? `Citations received ${w.citations} to ${what} published ${w.papers}, divided by the number of those papers. ` +
+              `This is the ${winName} rolling rate at ${this._monthName(sm.month)}, the latest settled month ` +
+              '(later months are still collecting citations), and matches the chart line at that month.'
+            : '';
+        const cards = [
+            [UIHelpers.formatIF(sm.rate), 'Citation Rate (citable items)', when,
+                rateTip('the journal\'s citable items (research, reviews, case reports and guidelines)') +
+                ' Like a Journal Impact Factor, but recomputed every month and counting only citations to citable items.'],
+            [UIHelpers.formatIF(sm.researchRate), 'Research Rate', when, rateTip('research articles')],
+            [UIHelpers.formatIF(sm.reviewRate), 'Review Rate', when, rateTip('reviews')],
+            [UIHelpers.formatInt(sm.citablePapers), 'Citable Items', papersWhen,
+                'Research articles, reviews, case reports and guidelines in the paper window: the denominator of the citation rate.'],
+            [UIHelpers.formatInt(sm.researchPapers), 'Research Papers', papersWhen, ''],
+            [UIHelpers.formatInt(sm.reviewPapers), 'Review Papers', papersWhen, ''],
+            [UIHelpers.formatPct(sm.reviewPct), 'Review %', papersWhen,
+                'Reviews as a share of everything the journal published in the paper window, including editorials, letters and other non-citable items.'],
+        ];
+        return cards.map(([v, label, sub, tip]) => {
+            const info = tip ? ` <span class="metric-info" data-tooltip="${UIHelpers.escapeHtml(tip).replace(/"/g, '&quot;')}">ⓘ</span>` : '';
+            const subHtml = sub ? `<span class="metric-sublabel">${sub}</span>` : '';
+            return `<div class="metric-card"><span class="metric-value">${v}</span>` +
+                `<span class="metric-label">${label}${info}</span>${subHtml}</div>`;
+        }).join('');
     }
 
     _renderJcMetrics(journalsData) {
@@ -655,23 +773,9 @@ class IMPACTApp {
         const colorMap = this.jcPicker.getColorMap();
 
         container.innerHTML = journalsData.map((j, jIdx) => {
-            const sm = this._journalSummary(j);
-            const snapshotMonth = sm.lastEntry ? sm.lastEntry.month : null;
-            const dateRange = this._computeDateRange(snapshotMonth);
-            const avgLabel = dateRange ? `24-mo avg · ${dateRange}` : '24-mo avg';
+            const sm = this._journalSummary(j, this.jcWindow);
             const color = colorMap[j.slug] || chartManager.palette[jIdx % chartManager.palette.length];
-
-            const cards = [
-                [UIHelpers.formatIF(sm.rate), 'Citation Rate (citable items)'],
-                [UIHelpers.formatIF(sm.avgResRate), `Research Rate (${avgLabel})`],
-                [UIHelpers.formatIF(sm.avgRevRate), `Review Rate (${avgLabel})`],
-                [UIHelpers.formatInt(sm.citablePapers), dateRange ? `Citable Items · ${dateRange}` : 'Citable Items'],
-                [UIHelpers.formatInt(sm.researchPapers), dateRange ? `Research Papers · ${dateRange}` : 'Research Papers'],
-                [UIHelpers.formatInt(sm.reviewPapers), dateRange ? `Review Papers · ${dateRange}` : 'Review Papers'],
-                [UIHelpers.formatPct(sm.reviewPct), 'Review %'],
-            ].map(([v, l]) =>
-                `<div class="metric-card"><span class="metric-value">${v}</span><span class="metric-label">${l}</span></div>`
-            ).join('');
+            const cards = this._metricCardsHtml(sm, this.jcWindow);
 
             return `<div class="compare-metrics-journal">
                 <div class="compare-metrics-header" style="border-left: 4px solid ${color}; padding-left: 0.5rem;"><a href="#" class="compare-journal-link" data-slug="${j.slug}" style="color: inherit; text-decoration: underline; cursor: pointer;">${j.journal}</a></div>
@@ -731,35 +835,11 @@ class IMPACTApp {
             // Title
             document.getElementById('detail-title').textContent = data.journal;
 
-            // Metrics: headline rate from the settled snapshot, 24-mo averaged type rates
-            const latest = data.latest || {};
-            const sm = this._journalSummary(data);
-            const { avgResRate, avgRevRate, researchPapers, reviewPapers, reviewPct } = sm;
-
-            // Date range label
-            const snapshotMonth = sm.lastEntry ? sm.lastEntry.month : latest.month;
-            const dateRange = this._computeDateRange(snapshotMonth);
-            const avgLabel = dateRange ? `24-mo avg · ${dateRange}` : '24-mo avg';
-
-            document.getElementById('metric-citable-rate').textContent = UIHelpers.formatIF(sm.rate);
-            document.getElementById('metric-citable-rate-label').textContent =
-                snapshotMonth ? `Citation Rate (citable items) · ${snapshotMonth}` : 'Citation Rate (citable items)';
-            document.getElementById('metric-citable-papers').textContent = UIHelpers.formatInt(sm.citablePapers);
-            document.getElementById('metric-citable-papers-label').textContent = dateRange ? `Citable Items · ${dateRange}` : 'Citable Items';
-            document.getElementById('metric-research-rate').textContent = UIHelpers.formatIF(avgResRate);
-            document.getElementById('metric-research-rate-label').textContent = `Research Rate (${avgLabel})`;
-            document.getElementById('metric-review-rate').textContent = UIHelpers.formatIF(avgRevRate);
-            document.getElementById('metric-review-rate-label').textContent = `Review Rate (${avgLabel})`;
-            document.getElementById('metric-research-papers').textContent = UIHelpers.formatInt(researchPapers);
-            document.getElementById('metric-research-papers-label').textContent = dateRange ? `Research Papers · ${dateRange}` : 'Research Papers';
-            document.getElementById('metric-review-papers').textContent = UIHelpers.formatInt(reviewPapers);
-            document.getElementById('metric-review-papers-label').textContent = dateRange ? `Review Papers · ${dateRange}` : 'Review Papers';
-            document.getElementById('metric-review-pct').textContent = UIHelpers.formatPct(reviewPct);
-            document.getElementById('metric-review-pct-label').textContent = 'Review %';
             this._renderJournalFlags(data.flags, this._settledMonth(data));
 
             // Reset window/type state for new journal
             this.currentWindow = 'timeseries';
+            this._renderDetailMetrics(data);
             this._showCombined = true;
             this._showIndividual = true;
             this.detailXMin = null; this.detailXMax = null;
@@ -1033,14 +1113,36 @@ class IMPACTApp {
         return series;
     }
 
-    _computeDateRange(snapshotMonth) {
-        if (!snapshotMonth) return null;
-        const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const [yr, mo] = snapshotMonth.split('-').map(Number);
-        // Papers window: 24 months ending one month before snapshot
-        const endDate = new Date(yr, mo - 2, 1); // month before snapshot
-        const startDate = new Date(endDate.getFullYear(), endDate.getMonth() - 23, 1);
-        return `${MONTH_NAMES[startDate.getMonth()]} ${startDate.getFullYear()} – ${MONTH_NAMES[endDate.getMonth()]} ${endDate.getFullYear()}`;
+    /** Metric cards on the journal detail page, for the selected window. */
+    _renderDetailMetrics(data) {
+        const sm = this._journalSummary(data, this.currentWindow);
+        document.getElementById('detail-metrics').innerHTML = this._metricCardsHtml(sm, this.currentWindow);
+    }
+
+    /** 'YYYY-MM' -> 'Oct 2025'. */
+    _monthName(month) {
+        const [y, m] = month.split('-').map(Number);
+        return `${MONTH_ABBR[m - 1]} ${y}`;
+    }
+
+    /**
+     * Paper and citation windows of the point at `month` for a timeseries
+     * variant, as display strings (impact_calculator.compute_rolling_if):
+     * citations in the 12 months ending at month; papers in the WINDOW_PARAMS
+     * months ending (skip + 1) months before the citation window starts.
+     */
+    _windowRanges(month, windowKey) {
+        if (!month) return null;
+        const { pw, skip } = WINDOW_PARAMS[windowKey] || WINDOW_PARAMS.timeseries;
+        const [y, m] = month.split('-').map(Number);
+        const idx = y * 12 + (m - 1);
+        const fmt = i => `${MONTH_ABBR[i % 12]} ${Math.floor(i / 12)}`;
+        const citeStart = idx - 11;
+        const paperEnd = citeStart - 1 - skip;
+        return {
+            citations: `${fmt(citeStart)} – ${fmt(idx)}`,
+            papers: `${fmt(paperEnd - pw + 1)} – ${fmt(paperEnd)}`,
+        };
     }
 
     setupDetailToggles(data) {
@@ -1052,6 +1154,7 @@ class IMPACTApp {
             const scaleOverrides = this._buildScaleOverrides(this.detailXMin, this.detailXMax, this.detailYMin, this.detailYMax);
             chartManager.createMultiSeriesChart('journal-chart', series, this._journalYZero, scaleOverrides);
         };
+        this._redrawDetailRate = redrawRate;
 
         const redrawSecondary = () => {
             const rawTs = data[this.currentWindow] || data.timeseries;
@@ -1062,6 +1165,7 @@ class IMPACTApp {
         // Window toggle — affects all charts
         this._setupToggleGroup('window-toggle', (windowKey) => {
             this.currentWindow = windowKey;
+            this._renderDetailMetrics(data);
             redrawRate();
             redrawSecondary();
         }, 'data-window');
@@ -1285,12 +1389,13 @@ class IMPACTApp {
 
     renderComparisonTable(container, journalsData) {
         const rows = journalsData.map(j => {
-            const sm = this._journalSummary(j);
+            const sm = this._journalSummary(j, this.jcWindow);
             return {
                 journal: j.journal,
+                month: sm.month ? this._monthName(sm.month) : null,
                 rate: sm.rate,
-                research_rate: sm.avgResRate,
-                review_rate: sm.avgRevRate,
+                research_rate: sm.researchRate,
+                review_rate: sm.reviewRate,
                 citable_papers: sm.citablePapers,
                 research_papers: sm.researchPapers,
                 review_papers: sm.reviewPapers,
@@ -1300,6 +1405,7 @@ class IMPACTApp {
 
         const columns = [
             { key: 'journal', label: 'Journal' },
+            { key: 'month', label: 'Month' },
             { key: 'rate', label: 'Citation Rate (citable items)', format: UIHelpers.formatIF },
             { key: 'research_rate', label: 'Research Rate', format: UIHelpers.formatIF },
             { key: 'review_rate', label: 'Review Rate', format: UIHelpers.formatIF },
