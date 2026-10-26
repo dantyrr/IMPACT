@@ -10,6 +10,7 @@
 
 const WORLD_TOPO_URL = 'https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/countries-50m.json';
 const US_STATES_URL = 'geo/us-states.json';
+const AFFIL_CITIES_URL = 'geo/affil-cities.json';   // scripts/build_affil_places_js.py
 
 // Parser country name -> world-atlas name, where they differ.
 const ATLAS_NAMES = {
@@ -180,6 +181,17 @@ class GeoTab {
             await new Promise(r => setTimeout(r, 400));   // stay under PubMed's 3 requests/second
         }
         return out;
+    }
+
+    /** Fetch the city table for the affiliation parser, once. */
+    static loadCities() {
+        if (!GeoTab._cities) {
+            GeoTab._cities = fetch(AFFIL_CITIES_URL)
+                .then(r => (r.ok ? r.json() : {}))
+                .then(t => AffilLocation.setCities(t))
+                .catch(() => { GeoTab._cities = null; });
+        }
+        return GeoTab._cities;
     }
 
     /** Countries and US states named across a paper's affiliation strings. */

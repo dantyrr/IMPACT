@@ -12,15 +12,24 @@ common variants, US state and territory names, USPS codes and the older AP
 abbreviations ("Calif", "Md"), and the USPS 3-digit ZIP prefix ranges, which
 check a ZIP against its state.
 
-The city is taken to be the segment before the state, unverified: a
-string that names a city without a state gets no location at all, since a
-city name alone is ambiguous (Burlington, Jackson, Columbia).
+The city is taken to be the segment before the state, unverified.
+
+A string that stops before the country ("University of Michigan, Ann Arbor.")
+is placed by its last segment when that name is in affil_cities.json, a table
+learned from strings that do name their country (scripts/build_affil_cities.py).
+Only names that nearly always mean the same place are in it, so ambiguous ones
+(Burlington, Jackson, Columbia, Cambridge) still get no location.
+
+Native-language country names (España, Deutschland) and ISO 3166 alpha-3
+codes in capitals (IND, GBR, SAU) also name the country.
 
 A US state or ZIP code without "USA" counts as US. Puerto Rico, Guam and the
 US Virgin Islands are US with their USPS code as the state, as in NIH
 RePORTER. Hong Kong, Macau and Taiwan are kept as written.
 """
 
+import json
+import os
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -30,14 +39,14 @@ USA = "USA"
 # Canonical name -> other ways PubMed affiliations write it.
 _COUNTRIES = {
     USA: ["United States", "United States of America", "U.S.A.", "U.S.", "US", "U S A"],
-    "Afghanistan": [], "Albania": [], "Algeria": [], "Andorra": [], "Angola": [],
-    "Antigua and Barbuda": [], "Argentina": [], "Armenia": [], "Australia": [], "Austria": [],
+    "Afghanistan": [], "Albania": [], "Algeria": ["Algérie", "Algerie"], "Andorra": [], "Angola": [],
+    "Antigua and Barbuda": [], "Argentina": [], "Armenia": [], "Australia": [], "Austria": ["Österreich", "Osterreich", "Autriche"],
     "Azerbaijan": [], "Bahamas": ["The Bahamas"], "Bahrain": [], "Bangladesh": [], "Barbados": [],
-    "Belarus": ["Republic of Belarus"], "Belgium": [], "Belize": [], "Benin": [], "Bermuda": [],
+    "Belarus": ["Republic of Belarus"], "Belgium": ["Belgique", "België", "Belgie", "Belgien"], "Belize": [], "Benin": [], "Bermuda": [],
     "Bhutan": [], "Bolivia": [], "Bosnia and Herzegovina": ["Bosnia-Herzegovina", "Bosnia"],
     "Botswana": [], "Brazil": ["Brasil"], "Brunei": ["Brunei Darussalam"], "Bulgaria": [],
     "Burkina Faso": [], "Burundi": [], "Cabo Verde": ["Cape Verde"], "Cambodia": [],
-    "Cameroon": [], "Canada": [], "Cayman Islands": [], "Central African Republic": [],
+    "Cameroon": ["Cameroun"], "Canada": [], "Cayman Islands": [], "Central African Republic": [],
     "Chad": [], "Chile": [],
     "China": ["People's Republic of China", "PR China", "P.R. China", "PRC",
               "China (mainland)", "Mainland China"],
@@ -46,49 +55,49 @@ _COUNTRIES = {
                                          "Congo DR", "D.R. Congo"],
     "Costa Rica": [], "Cote d'Ivoire": ["Côte d'Ivoire", "Ivory Coast"], "Croatia": [],
     "Cuba": [], "Curacao": ["Curaçao"], "Cyprus": [], "Czech Republic": ["Czechia"],
-    "Denmark": [], "Djibouti": [], "Dominica": [], "Dominican Republic": [], "Ecuador": [],
+    "Denmark": ["Danmark"], "Djibouti": [], "Dominica": [], "Dominican Republic": [], "Ecuador": [],
     "Egypt": [], "El Salvador": [], "Equatorial Guinea": [], "Eritrea": [], "Estonia": [],
-    "Eswatini": ["Swaziland"], "Ethiopia": [], "Faroe Islands": [], "Fiji": [], "Finland": [],
-    "France": [], "French Guiana": [], "French Polynesia": [], "Gabon": [],
-    "Gambia": ["The Gambia"], "Georgia": [], "Germany": [], "Ghana": [], "Greece": [],
+    "Eswatini": ["Swaziland"], "Ethiopia": [], "Faroe Islands": [], "Fiji": [], "Finland": ["Suomi"],
+    "France": ["Francia", "Frankreich"], "French Guiana": [], "French Polynesia": [], "Gabon": [],
+    "Gambia": ["The Gambia"], "Georgia": [], "Germany": ["Deutschland", "Allemagne", "Alemania", "Germania"], "Ghana": [], "Greece": ["Hellas"],
     "Greenland": [], "Grenada": [], "Guadeloupe": [], "Guatemala": [], "Guinea": [],
     "Guinea-Bissau": [], "Guyana": [], "Haiti": [], "Honduras": [],
     "Hong Kong": ["Hong Kong SAR", "Hong Kong S.A.R."], "Hungary": [], "Iceland": [],
     "India": [], "Indonesia": [], "Iran": ["Islamic Republic of Iran", "I.R. Iran", "IR Iran"],
-    "Iraq": [], "Ireland": ["Republic of Ireland", "Eire"], "Israel": [], "Italy": [],
-    "Jamaica": [], "Japan": [], "Jordan": [], "Kazakhstan": [], "Kenya": [], "Kiribati": [],
+    "Iraq": [], "Ireland": ["Republic of Ireland", "Eire"], "Israel": [], "Italy": ["Italia", "Italie"],
+    "Jamaica": [], "Japan": ["Japon"], "Jordan": [], "Kazakhstan": [], "Kenya": [], "Kiribati": [],
     "Kosovo": [], "Kuwait": [], "Kyrgyzstan": ["Kyrgyz Republic"],
-    "Laos": ["Lao PDR", "Lao People's Democratic Republic"], "Latvia": [], "Lebanon": [],
+    "Laos": ["Lao PDR", "Lao People's Democratic Republic"], "Latvia": [], "Lebanon": ["Liban"],
     "Lesotho": [], "Liberia": [], "Libya": [], "Liechtenstein": [], "Lithuania": [],
     "Luxembourg": [], "Macau": ["Macao", "Macau SAR", "Macao SAR"], "Madagascar": [],
     "Malawi": [], "Malaysia": [], "Maldives": [], "Mali": [], "Malta": [],
     "Marshall Islands": [], "Martinique": [], "Mauritania": [], "Mauritius": [],
     "Mexico": ["México"], "Micronesia": [], "Moldova": ["Republic of Moldova"], "Monaco": [],
-    "Mongolia": [], "Montenegro": [], "Morocco": [], "Mozambique": [], "Myanmar": ["Burma"],
-    "Namibia": [], "Nepal": [], "Netherlands": ["The Netherlands", "Holland"],
+    "Mongolia": [], "Montenegro": [], "Morocco": ["Maroc", "Marruecos"], "Mozambique": [], "Myanmar": ["Burma"],
+    "Namibia": [], "Nepal": [], "Netherlands": ["The Netherlands", "Holland", "Nederland"],
     "New Caledonia": [], "New Zealand": [], "Nicaragua": [], "Niger": [], "Nigeria": [],
     "North Korea": ["Democratic People's Republic of Korea", "DPR Korea"],
     "North Macedonia": ["Macedonia", "Republic of North Macedonia", "Republic of Macedonia"],
-    "Norway": [], "Oman": [], "Pakistan": [], "Palau": [],
+    "Norway": ["Norge"], "Oman": [], "Pakistan": [], "Palau": [],
     "Palestine": ["State of Palestine", "Palestinian Territories", "West Bank", "Gaza"],
     "Panama": [], "Papua New Guinea": [], "Paraguay": [], "Peru": ["Perú"],
-    "Philippines": ["The Philippines"], "Poland": [], "Portugal": [], "Qatar": [],
+    "Philippines": ["The Philippines"], "Poland": ["Polska"], "Portugal": [], "Qatar": [],
     "Reunion": ["Réunion"], "Romania": [], "Russia": ["Russian Federation"], "Rwanda": [],
     "Saint Kitts and Nevis": [], "Saint Lucia": [], "Samoa": [], "San Marino": [],
-    "Saudi Arabia": ["Kingdom of Saudi Arabia", "KSA"], "Senegal": [], "Serbia": [],
+    "Saudi Arabia": ["Kingdom of Saudi Arabia", "KSA"], "Senegal": ["Sénégal"], "Serbia": [],
     "Seychelles": [], "Sierra Leone": [], "Singapore": [], "Slovakia": ["Slovak Republic"],
     "Slovenia": [], "Solomon Islands": [], "Somalia": [], "South Africa": [],
     "South Korea": ["Korea", "Republic of Korea", "Korea (South)", "Korea South", "Rep. of Korea",
                     "Korea, Republic of"],
-    "South Sudan": [], "Spain": [], "Sri Lanka": [], "Sudan": [], "Suriname": [],
-    "Sweden": [], "Switzerland": [], "Syria": ["Syrian Arab Republic"],
+    "South Sudan": [], "Spain": ["España", "Espana", "Espagne", "Spagna"], "Sri Lanka": [], "Sudan": [], "Suriname": [],
+    "Sweden": ["Sverige"], "Switzerland": ["Schweiz", "Suisse", "Svizzera"], "Syria": ["Syrian Arab Republic"],
     "Taiwan": ["Republic of China", "ROC", "R.O.C.", "Taiwan ROC"], "Tajikistan": [],
     "Tanzania": ["United Republic of Tanzania"], "Thailand": [], "Timor-Leste": ["East Timor"],
-    "Togo": [], "Tonga": [], "Trinidad and Tobago": ["Trinidad"], "Tunisia": [],
+    "Togo": [], "Tonga": [], "Trinidad and Tobago": ["Trinidad"], "Tunisia": ["Tunisie", "Túnez"],
     "Turkey": ["Türkiye", "Turkiye"], "Turkmenistan": [], "Uganda": [], "Ukraine": [],
     "United Arab Emirates": ["UAE", "U.A.E."],
     "United Kingdom": ["UK", "U.K.", "England", "Scotland", "Wales", "Northern Ireland",
-                       "Great Britain", "GB"],
+                       "Great Britain", "GB", "Royaume-Uni", "Reino Unido"],
     "Uruguay": [], "Uzbekistan": [], "Vanuatu": [], "Venezuela": [],
     "Vietnam": ["Viet Nam"], "Yemen": [], "Zambia": [], "Zimbabwe": [],
 }
@@ -101,6 +110,28 @@ _REGIONS = {
     "Australia": ["New South Wales", "Queensland", "Tasmania", "Western Australia",
                   "South Australia", "Australian Capital Territory", "Northern Territory"],
 }
+# ISO 3166 alpha-3 codes some journals print in place of the country name
+# ("Karachi, PAK"). Matched only in capitals, like the US state codes; codes
+# that are also common capitalized words or US abbreviations are left out.
+_ISO3 = {
+    "AFG": "Afghanistan", "ARE": "United Arab Emirates", "ARG": "Argentina", "AUS": "Australia",
+    "AUT": "Austria", "BEL": "Belgium", "BGD": "Bangladesh", "BGR": "Bulgaria", "BRA": "Brazil",
+    "CAN": "Canada", "CHE": "Switzerland", "CHL": "Chile", "CHN": "China", "CMR": "Cameroon",
+    "COL": "Colombia", "CZE": "Czech Republic", "DEU": "Germany", "DNK": "Denmark",
+    "DZA": "Algeria", "ECU": "Ecuador", "EGY": "Egypt", "ESP": "Spain", "ETH": "Ethiopia",
+    "FIN": "Finland", "FRA": "France", "GBR": "United Kingdom", "GHA": "Ghana", "GRC": "Greece",
+    "HKG": "Hong Kong", "HRV": "Croatia", "HUN": "Hungary", "IDN": "Indonesia", "IND": "India",
+    "IRL": "Ireland", "IRN": "Iran", "IRQ": "Iraq", "ISR": "Israel", "ITA": "Italy",
+    "JOR": "Jordan", "JPN": "Japan", "KEN": "Kenya", "KOR": "South Korea", "KWT": "Kuwait",
+    "LBN": "Lebanon", "LKA": "Sri Lanka", "MAR": "Morocco", "MEX": "Mexico", "MYS": "Malaysia",
+    "NGA": "Nigeria", "NLD": "Netherlands", "NOR": "Norway", "NPL": "Nepal", "NZL": "New Zealand",
+    "OMN": "Oman", "PAK": "Pakistan", "PHL": "Philippines", "POL": "Poland", "PRT": "Portugal",
+    "QAT": "Qatar", "ROU": "Romania", "RUS": "Russia", "SAU": "Saudi Arabia", "SGP": "Singapore",
+    "SRB": "Serbia", "SVK": "Slovakia", "SVN": "Slovenia", "SWE": "Sweden", "THA": "Thailand",
+    "TUN": "Tunisia", "TUR": "Turkey", "TWN": "Taiwan", "UGA": "Uganda", "UKR": "Ukraine",
+    "URY": "Uruguay", "VEN": "Venezuela", "VNM": "Vietnam", "ZAF": "South Africa",
+}
+
 _REGION_CODES = {
     "Canada": ["ON", "QC", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE"],
     "Australia": ["NSW", "VIC", "QLD", "TAS"],   # not WA or SA, which are also US codes
@@ -191,7 +222,29 @@ _MAX_PLACE = max(map(len, _PLACES))
 _CODES = {c: (USA, c) for c in STATES}
 for _c, _vs in _REGION_CODES.items():
     _CODES.update({v: (_c, None) for v in _vs})
+_CODES.update({k: (c, None) for k, c in _ISO3.items()})
 _AP_KEYS = {tuple(k.split()): v for k, v in _AP.items()}
+
+
+CITIES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "affil_cities.json")
+
+
+def city_key(segment):
+    """Lookup key for a segment in the city table: its words in lower case,
+    without postcodes or other tokens containing digits."""
+    toks = [t for t in _tokens(segment) if not any(ch.isdigit() for ch in t)]
+    return "" if _is_junk(toks) else " ".join(t.lower() for t in toks)
+
+
+def _load_cities():
+    try:
+        with open(CITIES_PATH) as f:
+            return {k: (c, s) for k, (c, s) in json.load(f).items()}
+    except FileNotFoundError:
+        return {}
+
+
+_CITIES = _load_cities()   # city_key -> (country, state or None)
 
 
 @dataclass(frozen=True)
@@ -200,7 +253,8 @@ class Location:
     state: str | None = None     # USPS code; US only
     zip: str | None = None       # 5-digit ZIP; US only, and only if it fits the state
     basis: str | None = None     # "named": the country is written; "inferred": from a
-                                 # state, province or ZIP only
+                                 # state, province or ZIP only; "city": from the city
+                                 # table (affil_cities.json)
     city: str | None = None      # US only: the text before the state, unverified
                                  # (gazetteer.py checks it against Census places)
 
@@ -311,10 +365,12 @@ def _disambiguate(hit, rest, before, context):
     return hit
 
 
-def parse_part(part, whole=None):
+def parse_part(part, whole=None, cities=True):
     """(Location, head) for one affiliation. head is the list of segments
     before the place, where the institution is named, ending with whatever
-    shared a segment with the place ("Durham" of "Durham NC")."""
+    shared a segment with the place ("Durham" of "Durham NC"). With cities,
+    a part that names no place falls back to the city table on its last
+    segment."""
     segs = _segments(part)
     context = {t.lower() for t in _tokens(whole or part)}
     country = state = zip_ = None
@@ -356,6 +412,11 @@ def parse_part(part, whole=None):
         if state or country != USA:
             break
     if country is None:
+        if cities:
+            i = next((i for i in range(len(segs) - 1, -1, -1) if city_key(segs[i])), None)
+            hit = _CITIES.get(city_key(segs[i])) if i is not None else None
+            if hit:
+                return Location(hit[0], hit[1], basis="city"), segs[:i]
         return NOWHERE, segs
     if country == USA and zip_:
         zs = zip_state(zip_)

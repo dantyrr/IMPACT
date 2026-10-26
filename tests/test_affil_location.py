@@ -63,7 +63,7 @@ from src.pipeline.affil_location import (Location, NOWHERE, parse_location, pars
     # nothing to go on
     ("Department of Medicine.", None, None, None),
     ("Department of Medicine and.", None, None, None),
-    ("Boston University, Boston", None, None, None),           # a city alone is ambiguous
+    ("Cambridge University, Cambridge", None, None, None),     # an ambiguous city alone
     ("", None, None, None),
 ])
 def test_parse_location(text, country, state, zip5):
@@ -145,3 +145,34 @@ def test_city_is_the_segment_before_the_state(text, city):
 def test_parse_locations_two_countries_in_order():
     locs = parse_locations("Dept X, Boston, MA, USA; Dept Y, Oxford, UK")
     assert [l.country for l in locs] == ["USA", "United Kingdom"]
+
+
+@pytest.mark.parametrize("text, country", [
+    ("Dow University of Health Sciences, Karachi, PAK.", "Pakistan"),
+    ("King Saud University, Riyadh, SAU", "Saudi Arabia"),
+    ("Universidad de Granada, Granada, España.", "Spain"),
+    ("Klinik für Innere Medizin, Berlin, Deutschland", "Germany"),
+    ("Universität Wien, Wien, Österreich.", "Austria"),
+    ("Hôpital Ibn Rochd, Casablanca, Maroc", "Morocco"),
+])
+def test_iso3_codes_and_native_country_names(text, country):
+    assert parse_location(text).country == country
+
+
+def test_lowercase_iso3_word_is_not_a_country(monkeypatch):
+    from src.pipeline import affil_location as al
+    monkeypatch.setattr(al, "_CITIES", {})
+    assert parse_location("Some Clinic, Lahore, pak").country is None
+
+
+def test_city_table_places_a_string_that_stops_at_the_city(monkeypatch):
+    from src.pipeline import affil_location as al
+    monkeypatch.setattr(al, "_CITIES", {"ann arbor": ("USA", "MI"), "capital medical university": ("China", None)})
+    loc = parse_location("Department of Internal Medicine (D.J.T.), University of Michigan, Ann Arbor.")
+    assert (loc.country, loc.state, loc.basis) == ("USA", "MI", "city")
+    assert parse_location("Beijing Friendship Hospital, Capital Medical University.").country == "China"
+    # only the last segment is looked up, and only when nothing else names a place
+    assert parse_location("Ann Arbor, Some Unknown Institute.") == NOWHERE
+    assert parse_location("University of Michigan, Ann Arbor, MI 48109, USA.").basis == "named"
+    loc, _ = parse_part("University of Michigan, Ann Arbor.", cities=False)
+    assert loc == NOWHERE

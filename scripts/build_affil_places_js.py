@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Write docs/js/affil-places.js: the place tables of src/pipeline/affil_location.py
-for the browser-side parser (docs/js/affil-location.js). Re-run after editing them."""
+for the browser-side parser (docs/js/affil-location.js), and copy the city table
+(src/pipeline/affil_cities.json) to docs/geo/affil-cities.json, which the browser
+fetches on demand. Re-run after editing either."""
 
 import json
 import os
+import shutil
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.pipeline import affil_location as al
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "docs", "js", "affil-places.js")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.path.join(ROOT, "docs", "js", "affil-places.js")
+CITIES_OUT = os.path.join(ROOT, "docs", "geo", "affil-cities.json")
 
 
 def main():
@@ -29,6 +34,8 @@ def main():
         f.write("// Do not edit by hand.\n")
         f.write(f"const AFFIL_PLACES = {json.dumps(tables, separators=(',', ':'))};\n")
     print(f"wrote {OUT} ({os.path.getsize(OUT):,} bytes)")
+    shutil.copyfile(al.CITIES_PATH, CITIES_OUT)
+    print(f"copied {CITIES_OUT} ({os.path.getsize(CITIES_OUT):,} bytes)")
 
 
 if __name__ == "__main__":

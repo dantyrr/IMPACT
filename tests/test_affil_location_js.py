@@ -25,6 +25,12 @@ CASES = [
     "1 Department of Physics, Stanford University, Stanford, Calif.",
     "Nowhere Institute, Some Street 5.",
     "constructor, toString, hasOwnProperty",
+    "Department of Internal Medicine (D.J.T.), University of Michigan, Ann Arbor.",
+    "Dow University of Health Sciences, Karachi, PAK.",
+    "Profesor de Medicina, Universidad de Granada, Granada, España.",
+    "Department of Cardiology, Beijing Friendship Hospital, Capital Medical University.",
+    "Department of Medicine, Cambridge.",
+    "Surgery, Boston University School of Medicine, Boston Medical Center, Boston 02118.",
 ]
 
 

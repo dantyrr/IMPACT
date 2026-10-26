@@ -6,6 +6,9 @@
  *
  * AffilLocation.parseLocations(text) -> [{country, state}], one per
  * semicolon-separated affiliation that names a place.
+ * AffilLocation.setCities(table) installs the city table (affil-cities.json,
+ * fetched on demand because of its size); until then a part that stops before
+ * the country gets no place.
  */
 
 const AffilLocation = (() => {
@@ -17,6 +20,7 @@ const AffilLocation = (() => {
     const COUNTRY_KEYS = new Set(T.countryKeys);
     const GEORGIA_COUNTRY = new Set(T.georgiaCountry);
     const LEBANON_NH = new Set(T.lebanonNH);
+    let CITIES = new Map();
 
     const ascii = text => /^[\x00-\x7f]*$/.test(text) ? text
         : text.normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^\x00-\x7f]/g, '');
@@ -76,6 +80,11 @@ const AffilLocation = (() => {
 
     const isJunk = toks => !toks.length || (toks.length === 1 && ['and', 'the'].includes(toks[0].toLowerCase()));
 
+    function cityKey(segment) {
+        const toks = tokens(segment).filter(t => !/\d/.test(t));
+        return isJunk(toks) ? '' : toks.map(t => t.toLowerCase()).join(' ');
+    }
+
     function zipState(zip5) {
         const p = parseInt(zip5.slice(0, 3), 10);
         for (const [lo, hi, st] of T.zipRanges) if (lo <= p && p <= hi) return st;
@@ -122,7 +131,15 @@ const AffilLocation = (() => {
             if (!found) break;
             if (state || country !== USA) break;
         }
-        if (country === null) return null;
+        if (country === null) {
+            for (let i = segs.length - 1; i >= 0; i--) {
+                const k = cityKey(segs[i]);
+                if (!k) continue;
+                const hit = CITIES.get(k);
+                return hit ? { country: hit[0], state: hit[1] } : null;
+            }
+            return null;
+        }
         if (country === USA && zip && state === null) state = zipState(zip);
         return { country, state: country === USA ? state : null };
     }
@@ -131,7 +148,9 @@ const AffilLocation = (() => {
         return splitParts(text).map(p => parsePart(p, text)).filter(Boolean);
     }
 
-    return { parseLocations, clean, splitParts };
+    function setCities(table) { CITIES = new Map(Object.entries(table)); }
+
+    return { parseLocations, clean, splitParts, setCities };
 })();
 
 if (typeof module !== 'undefined') module.exports = AffilLocation;

@@ -3243,6 +3243,7 @@ class IMPACTApp {
         btn.disabled = true;
         hint.style.display = '';
         try {
+            await GeoTab.loadCities();
             const affils = await GeoTab.fetchAffiliations(papers.map(p => String(p.pmid)),
                 (done, total) => { hint.textContent = `Reading affiliations from PubMed: ${done.toLocaleString()} of ${total.toLocaleString()} papers…`; });
             const located = papers.map(p => ({ year: p.year, ...GeoTab.placesOf(affils.get(String(p.pmid)) || []) }));
