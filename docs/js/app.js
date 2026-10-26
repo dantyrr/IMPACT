@@ -177,15 +177,14 @@ class IMPACTApp {
 
     /**
      * Dashed vertical marker lines on the rate charts (chartManager.markers):
-     * a JCR-release toggle (each June) and viewer-chosen months or days. One
-     * shared set for the Journals and journal detail charts, remembered in
-     * this browser.
+     * a JCR-release toggle (each June, off on every page load) and
+     * viewer-chosen months or days (remembered in this browser). One shared
+     * set for the Journals and journal detail charts.
      */
     setupChartMarkers() {
         try {
             const saved = JSON.parse(localStorage.getItem(MARKERS_KEY) || 'null');
             if (saved && typeof saved === 'object') {
-                chartManager.markers.jcr = !!saved.jcr;
                 chartManager.markers.dates = Array.isArray(saved.dates)
                     ? saved.dates.filter(d => this._parseMarkerDate(d)) : [];
             }
@@ -243,7 +242,7 @@ class IMPACTApp {
 
     _markersChanged() {
         try {
-            localStorage.setItem(MARKERS_KEY, JSON.stringify(chartManager.markers));
+            localStorage.setItem(MARKERS_KEY, JSON.stringify({ dates: chartManager.markers.dates }));
         } catch (e) { /* not remembered; still drawn */ }
         this._renderMarkerControls();
         if (chartManager.charts['jc-chart']) this.updateJournalsTrendsChart();
