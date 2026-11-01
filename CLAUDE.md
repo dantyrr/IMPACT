@@ -30,6 +30,7 @@ Data sources: PubMed Annual Baseline + update files (~40M records) + iCite Open 
 - `python scripts/compute_snapshots.py` — Recompute all rolling IFs + export JSON
 - `python scripts/run_weekly_update.py` — Incremental update (new papers + citations)
 - `python scripts/upload_to_r2.py` — Sync JSON to Cloudflare R2
+- `python scripts/mark_noncounting_citations.py [--dry-run]` — Mark stored citations made by errata/retraction notices/EoCs (backfill; inserts mark them already)
 - `python scripts/validate_exports.py [--since YYYY-MM-DD]` — Verify JSON export completeness and v2 shape (fails files older than --since, default today)
 - `sqlite3 data/impact.db` — Query the main database directly
 
@@ -80,3 +81,4 @@ two commands, using repository secrets for `PUBMED_API_KEY`, `R2_ACCOUNT_ID`, `R
 - SQLite WAL mode needed for concurrent access from parallel workers
 - `docs/data/journals/` and `docs/data/papers/` are gitignored — data served from R2 in production
 - Rolling IF = citations (12-mo window) to citable items / citable items (24-mo paper window); citable = research, review, case_report, guideline (`doc_class.py`). iCite no longer sets the research flag. See METHODOLOGY.md
+- Citations made by errata, retraction notices and expressions of concern carry `citations.citing_class` and count toward no metric; every citation query in `db_manager.py` filters on `COUNTED`. New citation reads must too

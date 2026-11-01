@@ -17,7 +17,7 @@ Citation rate(M) =
     ÷ number of citable items published in the paper window
 ```
 
-Numerator and denominator are taken over the same set of papers: the citable items in the paper window. A citation to an editorial, a news item or an erratum is not counted, and those items are not in the denominator.
+Numerator and denominator are taken over the same set of papers: the citable items in the paper window. A citation to an editorial, a news item or an erratum is not counted, and those items are not in the denominator. A citation *made by* an erratum or retraction notice is not counted either (see "Citations that do not count").
 
 ### Windows
 
@@ -57,6 +57,24 @@ Every paper receives one document class. PubMed's publication-type list is read 
 A paper with no match is `other`. "Retracted Publication" is the tag on the retracted paper itself and does not make it an erratum; only the notices do. A guideline that is also tagged Review is a guideline; both are citable, so the order affects labels only.
 
 **Citable classes: research, review, case_report, guideline.** These form the numerator and denominator of the citation rate. PubMed's own publication-type column is stored unchanged; the class is stored separately.
+
+### Citations that do not count
+
+A citation whose citing paper is in the `erratum` class (Published Erratum, Retraction Notice, Retraction of Publication, Expression of Concern) counts toward no metric: not the citation rate in any window, the papers' citation counts, the top-papers list, nor the monthly citation totals. Such a notice cites the item it corrects, withdraws or flags. The link is a correction, not a use of the work, and counting it means a journal's own retractions raise its rate.
+
+Retraction notices show the effect. In 2023 Hindawi's mass retractions produced notices that made 5,765 citations to Hindawi journals' citable items from 2021–22. In 12 journals they were 5% or more of the window's citations, and in the Journal of Environmental and Public Health 52%. The Journal of Healthcare Engineering's 24-month rate for December 2023 was 1.735 with them and is 1.233 without (991 of its 3,425 citations).
+
+Errata and expressions of concern are excluded on the same grounds; the data show the same pattern at a smaller scale (impact.db, November 2026):
+
+| Citing class | Notices in PubMed | Citations stored | Notices citing exactly one paper | Share of JIF-style window citations, 2019 / 2023 / 2024 |
+|---|---|---|---|---|
+| Retraction notice | 34,069 | 35,087 | 81% | 0.008% / 0.067% / 0.008% |
+| Published erratum | 214,647 | 90,485 | 92% | 0.031% / 0.022% / 0.024% |
+| Expression of concern | 4,054 | 1,631 | 69% | under 0.001% each year |
+
+An erratum nearly always cites just the paper it corrects, and about a third of erratum citations are made one or two years after the cited paper's publication year, inside its JIF-style window. Overall errata add about 0.02–0.03% of window citations, but they reach about 5–6% in single journals (7 to 10 journals at 1% or more each year), and they would reward a journal for each correction it prints. Expressions of concern are too few to move any rate; they are excluded for consistency. "Corrected and Republished Article" is a full article, not a notice, and its citations count.
+
+The citations are kept in the database and marked, not deleted (`citations.citing_class`, set from the citing paper's PubMed publication types). The bulk pipeline and the weekly update mark them as they are inserted; `scripts/mark_noncounting_citations.py` marks rows stored earlier.
 
 ### Inference for front matter typed as "Journal Article"
 
