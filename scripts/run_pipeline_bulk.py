@@ -37,7 +37,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from src.pipeline.config import JOURNALS, DB_PATH, PUBMED_FULL_DB_PATH, ISSN_BULK_MAP
 from src.pipeline.class_inputs import fetch_bylines, write_bylines
 from src.pipeline.db_manager import DatabaseManager
-from src.pipeline.doc_class import classify, icite_evidence
+from src.pipeline.doc_class import citing_class, classify, icite_evidence
 from src.pipeline.icite_fetcher import IciteFetcher
 
 logging.basicConfig(
@@ -78,8 +78,9 @@ def get_papers_from_bulk(bulk: sqlite3.Connection, issn: str,
 def get_citing_dates(bulk: sqlite3.Connection,
                      citing_pmids: set) -> dict:
     """
-    Batch-lookup (year, month) for citing PMIDs from pubmed_full.db.
-    Returns {pmid: (year, month)}.
+    Batch-lookup (year, month, citing_class) for citing PMIDs from pubmed_full.db.
+    Returns {pmid: (year, month, citing_class)}; citing_class is
+    doc_class.citing_class of the paper's types (None for an ordinary paper).
     """
     if not citing_pmids:
         return {}
@@ -90,10 +91,11 @@ def get_citing_dates(bulk: sqlite3.Connection,
     bulk.executemany("INSERT OR IGNORE INTO _c VALUES (?)",
                      [(p,) for p in citing_pmids])
     rows = bulk.execute(
-        "SELECT p.pmid, p.pub_year, p.pub_month "
+        "SELECT p.pmid, p.pub_year, p.pub_month, p.pub_types "
         "FROM pubmed p JOIN _c c ON p.pmid = c.pmid"
     ).fetchall()
-    return {r[0]: (r[1], r[2]) for r in rows}
+    return {r[0]: (r[1], r[2], citing_class(json.loads(r[3]) if r[3] else []))
+            for r in rows}
 
 
 def open_icite_bulk_db(path: str) -> sqlite3.Connection:
@@ -253,7 +255,7 @@ def process_journal(issn: str, meta: dict, db: DatabaseManager,
         for pmid, rec in missing_icite.items():
             yr = rec.get("year")
             if yr:
-                citing_dates[pmid] = (yr, 6)
+                citing_dates[pmid] = (yr, 6, None)
         still_missing = missing - set(citing_dates)
         logger.info(
             f"  iCite fallback: resolved {len(missing) - len(still_missing):,} more "
@@ -270,13 +272,14 @@ def process_journal(issn: str, meta: dict, db: DatabaseManager,
         for citing_pmid in cited_by:
             if citing_pmid not in citing_dates:
                 continue
-            year, month = citing_dates[citing_pmid]
+            year, month, cls = citing_dates[citing_pmid]
             events.append({
                 "cited_pmid":    pmid,
                 "citing_pmid":   citing_pmid,
                 "citing_date":   f"{year}-{month:02d}-01",
                 "citing_year":   year,
                 "citing_month":  month,
+                "citing_class":  cls,
             })
         if events:
             db.add_citations_bulk(events)

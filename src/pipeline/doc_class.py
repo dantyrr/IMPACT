@@ -10,6 +10,12 @@ from typing import List, Optional, Tuple
 
 CITABLE = frozenset({'research', 'review', 'case_report', 'guideline'})
 
+# A citation made by a paper of one of these classes counts toward no metric.
+# An erratum, retraction notice or expression of concern cites the item it is
+# about; that link is a correction, not a use, and a journal's own mass
+# retractions would otherwise raise its rate (Hindawi 2023).
+NONCOUNTING_CITING = frozenset({'erratum'})
+
 # Tunable parameters of the inference rule (validated/adjusted in Task 7).
 INFERENCE = {
     'max_pages': 2,            # no-abstract research with page_count <= this -> commentary
@@ -52,6 +58,13 @@ def class_for_types(pub_types: List[str]) -> str:
         if present & types:
             return cls
     return 'other'
+
+
+def citing_class(pub_types: List[str]) -> Optional[str]:
+    """Value for citations.citing_class: the citing paper's class when its
+    citations do not count, else None."""
+    cls = class_for_types(pub_types)
+    return cls if cls in NONCOUNTING_CITING else None
 
 
 def icite_evidence(value) -> Optional[bool]:

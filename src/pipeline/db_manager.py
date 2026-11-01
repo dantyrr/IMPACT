@@ -27,6 +27,26 @@ def ensure_doc_class_columns(conn) -> None:
     conn.commit()
 
 
+def ensure_citing_class_column(conn) -> None:
+    """Add citations.citing_class to an existing DB if missing (metadata only,
+    instant even on a large table). A no-op when the table does not exist yet."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(citations)")}
+    if not cols or "citing_class" in cols:
+        return
+    try:
+        conn.execute("ALTER TABLE citations ADD COLUMN citing_class TEXT")
+    except sqlite3.OperationalError as e:
+        if "duplicate column" not in str(e).lower():
+            raise
+    conn.commit()
+
+
+# citing_class is set only on citations whose citing paper is in
+# doc_class.NONCOUNTING_CITING (errata, retraction notices, expressions of
+# concern); every metric query counts just the rest.
+COUNTED = "citing_class IS NULL"
+
+
 class DatabaseManager:
     """Manages the SQLite database for IMPACT."""
 
@@ -39,6 +59,7 @@ class DatabaseManager:
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.execute("PRAGMA busy_timeout=60000")  # wait up to 60s for locks
         self.ensure_doc_class_columns()
+        ensure_citing_class_column(self.conn)
 
     # ------------------------------------------------------------------ #
     #  Schema
@@ -78,6 +99,7 @@ class DatabaseManager:
                 citing_date TEXT NOT NULL,
                 citing_year INTEGER NOT NULL,
                 citing_month INTEGER,
+                citing_class TEXT,
                 UNIQUE(cited_pmid, citing_pmid)
             );
 
@@ -108,6 +130,7 @@ class DatabaseManager:
 
         self.conn.commit()
         self.ensure_doc_class_columns()
+        ensure_citing_class_column(self.conn)
 
     def ensure_doc_class_columns(self):
         """Idempotent migration: add papers.doc_class / class_source if missing."""
@@ -217,32 +240,48 @@ class DatabaseManager:
 
     def add_citation(self, cited_pmid: int, citing_pmid: int,
                      citing_date: str, citing_year: int,
-                     citing_month: int = None):
+                     citing_month: int = None, citing_class: str = None):
         """Record a citation event (skip if duplicate pair)."""
         self.conn.execute(
             """INSERT OR IGNORE INTO citations
-               (cited_pmid, citing_pmid, citing_date, citing_year, citing_month)
-               VALUES (?, ?, ?, ?, ?)""",
-            (cited_pmid, citing_pmid, citing_date, citing_year, citing_month),
+               (cited_pmid, citing_pmid, citing_date, citing_year, citing_month,
+                citing_class)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (cited_pmid, citing_pmid, citing_date, citing_year, citing_month,
+             citing_class),
         )
 
     def add_citations_bulk(self, citations: List[Dict]):
-        """Bulk-insert citation events."""
+        """Bulk-insert citation events. An event may carry citing_class
+        (doc_class.citing_class of the citing paper); absent means None."""
         self.conn.executemany(
             """INSERT OR IGNORE INTO citations
-               (cited_pmid, citing_pmid, citing_date, citing_year, citing_month)
+               (cited_pmid, citing_pmid, citing_date, citing_year, citing_month,
+                citing_class)
                VALUES (:cited_pmid, :citing_pmid, :citing_date,
-                        :citing_year, :citing_month)""",
-            citations,
+                        :citing_year, :citing_month, :citing_class)""",
+            ({"citing_class": None, **c} for c in citations),
         )
         self.conn.commit()
+
+    def mark_citing_class(self, classes: Dict[int, str]) -> int:
+        """Set citing_class on every stored citation made by each citing PMID
+        in {pmid: class}. Returns the number of rows changed."""
+        before = self.conn.total_changes
+        self.conn.executemany(
+            "UPDATE citations SET citing_class = ? "
+            "WHERE citing_pmid = ? AND citing_class IS NOT ?",
+            [(cls, pmid, cls) for pmid, cls in classes.items()],
+        )
+        self.conn.commit()
+        return self.conn.total_changes - before
 
     def get_citations_for_paper(self, pmid: int) -> List[Dict]:
         """Get all citation events where this paper is cited."""
         cursor = self.conn.cursor()
         cursor.execute(
-            """SELECT * FROM citations
-               WHERE cited_pmid = ? ORDER BY citing_date""",
+            f"""SELECT * FROM citations
+               WHERE cited_pmid = ? AND {COUNTED} ORDER BY citing_date""",
             (pmid,),
         )
         return [dict(r) for r in cursor.fetchall()]
@@ -252,8 +291,8 @@ class DatabaseManager:
         """Count citations of a paper within a date range."""
         cursor = self.conn.cursor()
         cursor.execute(
-            """SELECT COUNT(*) as cnt FROM citations
-               WHERE cited_pmid = ?
+            f"""SELECT COUNT(*) as cnt FROM citations
+               WHERE cited_pmid = ? AND {COUNTED}
                  AND citing_date >= ? AND citing_date <= ?""",
             (pmid, start_date, end_date),
         )
@@ -268,7 +307,7 @@ class DatabaseManager:
         cursor = self.conn.cursor()
         cursor.execute(
             f"""SELECT COUNT(*) as cnt FROM citations
-                WHERE cited_pmid IN ({placeholders})
+                WHERE cited_pmid IN ({placeholders}) AND {COUNTED}
                   AND citing_date >= ? AND citing_date <= ?""",
             pmids + [start_date, end_date],
         )
@@ -283,12 +322,12 @@ class DatabaseManager:
         """
         cursor = self.conn.cursor()
         cursor.execute(
-            """SELECT p.doc_class, p.pub_type,
+            f"""SELECT p.doc_class, p.pub_type,
                       COUNT(DISTINCT p.pmid) AS paper_count,
                       COUNT(c.id) AS citation_count
                FROM papers p
                LEFT JOIN citations c
-                   ON c.cited_pmid = p.pmid
+                   ON c.cited_pmid = p.pmid AND c.{COUNTED}
                    AND c.citing_date >= ? AND c.citing_date <= ?
                WHERE p.journal_id = ?
                  AND p.pub_date >= ? AND p.pub_date <= ?
@@ -318,7 +357,7 @@ class DatabaseManager:
         """Total citation count for a paper (all time)."""
         cursor = self.conn.cursor()
         cursor.execute(
-            "SELECT COUNT(*) as cnt FROM citations WHERE cited_pmid = ?",
+            f"SELECT COUNT(*) as cnt FROM citations WHERE cited_pmid = ? AND {COUNTED}",
             (pmid,),
         )
         return cursor.fetchone()["cnt"]
@@ -432,7 +471,7 @@ class DatabaseManager:
         cursor.execute(
             f"""SELECT cited_pmid, citing_year, COUNT(*) as cnt
                 FROM citations
-                WHERE cited_pmid IN ({placeholders})
+                WHERE cited_pmid IN ({placeholders}) AND {COUNTED}
                   AND citing_year IS NOT NULL
                 GROUP BY cited_pmid, citing_year""",
             pmids,
@@ -453,7 +492,7 @@ class DatabaseManager:
         cursor.execute(
             f"""SELECT cited_pmid, citing_year, citing_month, COUNT(*) as cnt
                 FROM citations
-                WHERE cited_pmid IN ({placeholders})
+                WHERE cited_pmid IN ({placeholders}) AND {COUNTED}
                   AND citing_year IS NOT NULL
                   AND citing_month IS NOT NULL
                 GROUP BY cited_pmid, citing_year, citing_month""",
@@ -474,9 +513,10 @@ class DatabaseManager:
         """
         cursor = self.conn.cursor()
         cursor.execute(
-            """SELECT c.citing_year, c.citing_month, COUNT(*) as cnt
+            f"""SELECT c.citing_year, c.citing_month, COUNT(*) as cnt
                FROM citations c
                WHERE c.cited_pmid IN (SELECT pmid FROM papers WHERE journal_id = ?)
+                 AND c.{COUNTED}
                  AND c.citing_year IS NOT NULL
                  AND c.citing_month IS NOT NULL
                GROUP BY c.citing_year, c.citing_month
@@ -501,12 +541,12 @@ class DatabaseManager:
         """Return papers for the papers browser export, sorted by citation count desc."""
         cursor = self.conn.cursor()
         cursor.execute(
-            """SELECT p.pmid, p.title, p.pub_year, p.pub_month, p.pub_type,
+            f"""SELECT p.pmid, p.title, p.pub_year, p.pub_month, p.pub_type,
                       p.first_author_name, p.first_author_country,
                       p.last_author_name, p.last_author_country,
                       COUNT(c.id) as citation_count
                FROM papers p
-               LEFT JOIN citations c ON c.cited_pmid = p.pmid
+               LEFT JOIN citations c ON c.cited_pmid = p.pmid AND c.{COUNTED}
                WHERE p.journal_id = ?
                GROUP BY p.pmid
                ORDER BY citation_count DESC

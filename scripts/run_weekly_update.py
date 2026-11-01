@@ -44,7 +44,7 @@ from src.pipeline.config import (
 )
 from src.pipeline.class_inputs import fetch_bylines, write_bylines
 from src.pipeline.db_manager import DatabaseManager
-from src.pipeline.doc_class import classify, icite_evidence
+from src.pipeline.doc_class import NONCOUNTING_CITING, citing_class, classify, icite_evidence
 from src.pipeline.json_exporter import JSONExporter
 from src.pipeline.journal_flags import flags_for_timeseries, settled_rates
 from src.pipeline.impact_calculator import ImpactCalculator
@@ -654,15 +654,20 @@ def main():
         for citing_pmid, refs in paper_refs.items():
             # Get citing paper's pub date — from in-memory metadata if available,
             # otherwise from DB (for papers that matched a tracked journal)
+            # and its class: citations from errata and notices are stored but
+            # marked so they count toward no metric
             meta = pmid_meta.get(citing_pmid)
             if meta:
                 citing_year = meta["pub_year"]
                 citing_month = meta["pub_month"]
+                cls = citing_class(meta.get("pub_types"))
             else:
                 paper = db.get_paper(citing_pmid)
                 if paper:
                     citing_year = paper["pub_year"]
                     citing_month = paper["pub_month"] or 1
+                    cls = (paper.get("doc_class") if paper.get("doc_class") in NONCOUNTING_CITING
+                           else citing_class([paper["pub_type"]]))
                 else:
                     continue  # shouldn't happen
 
@@ -676,6 +681,7 @@ def main():
                         "citing_date": citing_date,
                         "citing_year": citing_year,
                         "citing_month": citing_month,
+                        "citing_class": cls,
                     })
                     dirty_journal_ids.add(tracked_refs[ref_pmid])
 

@@ -94,3 +94,15 @@ def test_icite_never_sets_class_directly():
 def test_inference_knobs_are_read(monkeypatch):
     monkeypatch.setitem(INFERENCE, "max_pages", 0)
     assert classify(["Journal Article"], False, 2, None, "t") == ("research", "pubmed")
+
+
+def test_citing_class_marks_notices_only():
+    from src.pipeline.doc_class import NONCOUNTING_CITING, citing_class
+    assert NONCOUNTING_CITING == {'erratum'}
+    for types in (["Published Erratum"], ["Journal Article", "Retraction Notice"],
+                  ["Retraction Notice", "Journal Article", "Retracted Publication"],
+                  ["Editorial", "Expression of Concern"], ["retraction of publication"]):
+        assert citing_class(types) == 'erratum', types
+    for types in (["Journal Article"], ["Journal Article", "Retracted Publication"],
+                  ["Review"], ["Corrected and Republished Article", "Journal Article"], []):
+        assert citing_class(types) is None, types

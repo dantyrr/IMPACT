@@ -258,6 +258,25 @@ def test_main_adds_citation_events(env):
     assert cites == [(500, 3003, "2026-09-01"), (3004, 3003, "2026-09-01")]
 
 
+def test_main_marks_citations_from_notices(env, monkeypatch):
+    xml = XML.replace(b"</PubmedArticleSet>",
+                      _article(3005, ["Published Erratum"], False, "1", AUTH).encode()
+                      + _article(3006, ["Journal Article", "Retraction Notice"], False, "1",
+                                 AUTH).encode()
+                      + b"</PubmedArticleSet>")
+    monkeypatch.setattr(weekly, "esearch_recent", lambda days: [3001, 3002, 3003, 3004, 3005, 3006])
+    monkeypatch.setattr(weekly.requests, "post", mock.Mock(return_value=_resp(xml)))
+    refs = {3003: [500, 3004], 3005: [3004], 3006: [500]}
+    monkeypatch.setattr(weekly, "fetch_icite_references", lambda pmids, batch_size=200: {
+        p: {"references": refs.get(p, []), "icite_is_research": None} for p in pmids})
+    weekly.main()
+    c = sqlite3.connect(env["impact"])
+    cites = c.execute("SELECT cited_pmid, citing_pmid, citing_class FROM citations "
+                      "ORDER BY citing_pmid, cited_pmid").fetchall()
+    assert cites == [(500, 3003, None), (3004, 3003, None),
+                     (3004, 3005, "erratum"), (500, 3006, "erratum")]
+
+
 def test_main_refreshes_classes_file_and_flags(env):
     weekly.main()
     classes = json.loads((env["data"] / "classes" / "jour-one.json").read_text())
@@ -325,6 +344,23 @@ def test_pipeline_bulk_classifies_from_pubmed_full(tmp_path):
         3003: ("research", "pubmed", 1, "Journal Article"),
         3004: ("review", "pubmed", 0, "Review"),
     }
+
+
+def test_pipeline_bulk_citing_dates_carry_citing_class(tmp_path):
+    from src.pipeline.pubmed_full_db import open_full_db, store_records
+    from src.pipeline.pubmed_xml import iter_pubmed_xml
+    import io
+
+    bulk_mod = _load("run_pipeline_bulk")
+    xml = XML.replace(b"</PubmedArticleSet>", _article(3005, ["Published Erratum"], False, "1",
+                                                      AUTH).encode() + b"</PubmedArticleSet>")
+    full_path = tmp_path / "pubmed_full.db"
+    full = open_full_db(str(full_path))
+    store_records(full, [r for k, r in iter_pubmed_xml(io.BytesIO(xml)) if k == "record"],
+                  lambda r: True)
+    full.close()
+    got = bulk_mod.get_citing_dates(bulk_mod.open_bulk_db(str(full_path)), {3003, 3005})
+    assert got == {3003: (2026, 9, None), 3005: (2026, 9, "erratum")}
 
 
 def test_icite_evidence_values():

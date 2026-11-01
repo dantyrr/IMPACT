@@ -25,7 +25,7 @@ _next = [1000]
 
 
 def add(db, jid, cls, n_cites, pub_type="Journal Article", source="rule", date=PAPER_DATE,
-        set_class=True):
+        set_class=True, citing_class=None):
     _next[0] += 1
     pmid = _next[0]
     db.conn.execute(
@@ -36,7 +36,8 @@ def add(db, jid, cls, n_cites, pub_type="Journal Article", source="rule", date=P
     for i in range(n_cites):
         db.conn.execute(
             "INSERT INTO citations (cited_pmid, citing_pmid, citing_date, citing_year, "
-            "citing_month) VALUES (?,?,?,?,?)", (pmid, 900000 + pmid * 10 + i, CITE_DATE, 2024, 6))
+            "citing_month, citing_class) VALUES (?,?,?,?,?,?)",
+            (pmid, 900000 + pmid * 10 + i, CITE_DATE, 2024, 6, citing_class))
     db.conn.commit()
     return pmid
 
@@ -174,3 +175,50 @@ def test_weekly_format_snapshot_has_new_fields(db):
     jid = build_window(db)
     pt = mod.format_snapshot(ImpactCalculator(db).compute_rolling_if(jid, 2024, 12))
     assert (pt["citable_papers"], pt["citable_citations"], pt["inferred_papers"]) == (5, 11, 0)
+
+
+def test_notice_citations_count_toward_no_metric(db):
+    db.migrate_add_author_columns()
+    jid = build_window(db)
+    retracted = add(db, jid, "research", 3, citing_class="erratum")  # cited only by notices
+    s = ImpactCalculator(db).compute_rolling_if(jid, 2024, 12)
+    assert s["citable_papers"] == 6 and s["citable_citations"] == 11  # paper counts, cites do not
+    assert s["citation_count"] == 16
+    assert db.get_citation_count_for_paper(retracted) == 0
+    assert db.get_citations_for_paper(retracted) == []
+    assert db.count_citations_for_papers([retracted], "2024-01-01", "2024-12-31") == 0
+    assert db.get_citations_by_year_for_pmids([retracted]) == {}
+    assert db.get_citations_by_month_for_pmids([retracted]) == {}
+    assert db.get_journal_monthly_citations(jid) == {"2024-06": 16}
+    top = {r["pmid"]: r["citation_count"] for r in db.get_papers_for_export(jid)}
+    assert top[retracted] == 0
+
+
+def test_mark_citing_class_and_insert(db):
+    jid = db.add_journal("7777-7777", "Marks", slug="marks")
+    p = add(db, jid, "research", 0)
+    db.add_citations_bulk([
+        {"cited_pmid": p, "citing_pmid": 1, "citing_date": CITE_DATE, "citing_year": 2024,
+         "citing_month": 6},
+        {"cited_pmid": p, "citing_pmid": 2, "citing_date": CITE_DATE, "citing_year": 2024,
+         "citing_month": 6, "citing_class": "erratum"},
+        {"cited_pmid": p, "citing_pmid": 3, "citing_date": CITE_DATE, "citing_year": 2024,
+         "citing_month": 6}])
+    assert db.get_citation_count_for_paper(p) == 2
+    assert db.mark_citing_class({3: "erratum", 2: "erratum"}) == 1  # 2 already marked
+    assert db.get_citation_count_for_paper(p) == 1
+    assert db.mark_citing_class({3: "erratum"}) == 0
+
+
+def test_ensure_citing_class_column_migrates(tmp_path):
+    path = str(tmp_path / "old.db")
+    c = sqlite3.connect(path)
+    c.execute("CREATE TABLE citations (id INTEGER PRIMARY KEY, cited_pmid INTEGER, "
+              "citing_pmid INTEGER, citing_date TEXT, citing_year INTEGER, citing_month INTEGER)")
+    c.execute("INSERT INTO citations VALUES (1, 10, 20, '2024-01-01', 2024, 1)")
+    c.commit()
+    c.close()
+    d = DatabaseManager(path)
+    assert d.conn.execute("SELECT citing_class FROM citations").fetchone()[0] is None
+    d.close()
+    DatabaseManager(path).close()  # idempotent
