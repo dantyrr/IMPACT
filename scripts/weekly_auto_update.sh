@@ -133,7 +133,7 @@ trap 'rm -rf "$LOCK_DIR"' EXIT
 
 cd "$REPO" || { notify "IMPACT update failed" "cannot cd to $REPO"; exit 1; }
 
-log "=== start (age ${AGE}d, $(on_ac_power && echo "AC" || echo "battery")${DRY_RUN:+, dry-run}) ==="
+log "=== start (age ${AGE}d, $(on_ac_power && echo "AC" || echo "battery")$([ "$DRY_RUN" = "1" ] && echo ", dry-run")) ==="
 write_status "started" 0
 
 # ---- phase 1: update ------------------------------------------------------
