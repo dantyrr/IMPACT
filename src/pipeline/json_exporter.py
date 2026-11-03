@@ -11,7 +11,7 @@ import logging
 
 from src.pipeline.config import WEBSITE_DATA_DIR, SNAPSHOTS_DIR
 from src.pipeline.doc_class import CITABLE
-from src.pipeline.impact_calculator import category_of
+from src.pipeline.impact_calculator import ARTICLE_CATEGORIES, category_of
 from src.pipeline.journal_flags import encode_deltas, flags_for_timeseries
 
 logger = logging.getLogger(__name__)
@@ -251,6 +251,9 @@ class JSONExporter:
             pt = row.get("pub_type") or ""
             if pt:
                 entry["pt"] = pt
+            # the category the rate's by_type counts the paper under (impact_calculator._known_category)
+            k = category_of(row.get("doc_class"), row.get("pub_type"))
+            entry["k"] = k if k in ARTICLE_CATEGORIES else "other"
             cy = (cits_by_year or {}).get(str(row["pmid"]))
             if cy:
                 entry["cy"] = cy  # {year_str: count} — used by Influence tab

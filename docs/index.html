@@ -188,16 +188,26 @@
 
             <div class="chart-controls">
                 <span class="chart-controls-label">Article type:</span>
-                <div id="type-checkboxes" class="checkbox-grid" style="margin-bottom:0;">
-                    <label><input type="checkbox" value="research" checked> Research</label>
-                    <label><input type="checkbox" value="review"> Reviews</label>
-                    <label><input type="checkbox" value="case_report"> Case Reports</label>
-                    <label><input type="checkbox" value="guideline"> Guidelines</label>
-                    <label><input type="checkbox" value="editorial"> Editorials</label>
-                    <label><input type="checkbox" value="letter"> Letters</label>
-                    <label><input type="checkbox" value="erratum"> Errata</label>
-                    <label><input type="checkbox" value="other"> Other</label>
-                    <label><input type="checkbox" value="commentary"> Commentary</label>
+                <div id="type-checkboxes" class="type-groups">
+                    <div class="type-group">
+                        <span class="type-group-label">Counted in the citation rate</span>
+                        <div class="checkbox-grid">
+                            <label><input type="checkbox" value="research" checked> Research</label>
+                            <label><input type="checkbox" value="review" checked> Reviews</label>
+                            <label><input type="checkbox" value="case_report" checked> Case Reports</label>
+                            <label><input type="checkbox" value="guideline" checked> Guidelines</label>
+                        </div>
+                    </div>
+                    <div class="type-group">
+                        <span class="type-group-label">Not counted</span>
+                        <div class="checkbox-grid">
+                            <label><input type="checkbox" value="editorial"> Editorials</label>
+                            <label><input type="checkbox" value="letter"> Letters</label>
+                            <label><input type="checkbox" value="erratum"> Errata</label>
+                            <label><input type="checkbox" value="other"> Other</label>
+                            <label><input type="checkbox" value="commentary"> Commentary</label>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="chart-controls">
@@ -239,6 +249,25 @@
                     <button class="download-btn" id="jd-chart-dl-pdf">PDF</button>
                     <button class="download-btn" id="jd-chart-dl-csv">CSV</button>
                 </div>
+            </div>
+
+            <!-- What drives the rate: each type's weight and the papers behind it -->
+            <div id="drivers-wrap" style="display:none; margin-top:1.5rem;">
+                <h4>What drives the rate</h4>
+                <p class="section-note" id="drivers-scope"></p>
+                <ul class="drivers-contrib" id="drivers-contrib"></ul>
+                <div class="chart-controls" style="margin-top:0.75rem;">
+                    <span class="chart-controls-label">Top papers:</span>
+                    <div class="toggle-group" id="drivers-n-toggle">
+                        <button class="toggle-btn active" data-n="10">10</button>
+                        <button class="toggle-btn" data-n="20">20</button>
+                    </div>
+                    <button class="range-reset-btn" id="drivers-all-btn" style="display:none; margin-left:1rem;">Show all months</button>
+                </div>
+                <div class="table-scroll" style="max-height:560px;">
+                    <table class="data-table" id="drivers-table"></table>
+                </div>
+                <p class="section-note" id="drivers-coverage"></p>
             </div>
 
             <div id="composition-type-checkboxes" class="checkbox-grid" style="display:none; margin-bottom: 0.5rem;">

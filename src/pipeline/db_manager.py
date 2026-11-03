@@ -541,7 +541,7 @@ class DatabaseManager:
         """Return papers for the papers browser export, sorted by citation count desc."""
         cursor = self.conn.cursor()
         cursor.execute(
-            f"""SELECT p.pmid, p.title, p.pub_year, p.pub_month, p.pub_type,
+            f"""SELECT p.pmid, p.title, p.pub_year, p.pub_month, p.pub_type, p.doc_class,
                       p.first_author_name, p.first_author_country,
                       p.last_author_name, p.last_author_country,
                       COUNT(c.id) as citation_count

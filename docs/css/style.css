@@ -492,6 +492,16 @@ canvas {
     accent-color: var(--primary);
 }
 
+/* Article-type boxes in two labelled groups: counted in the rate, and not */
+.type-groups { display: flex; flex-direction: column; gap: 0.5rem; }
+.type-group { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; }
+.type-group .checkbox-grid { margin-bottom: 0; }
+.type-group-label { font-size: 0.8rem; color: var(--text-light); min-width: 12rem; }
+
+/* What drives the rate */
+.drivers-contrib { margin: 0.25rem 0 0.5rem; padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.6; }
+#drivers-table td.num, #drivers-table th.num { text-align: right; white-space: nowrap; }
+
 /* ---- Journal Trends Comparison Panel ---- */
 
 .jc-selector-row {

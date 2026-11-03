@@ -116,6 +116,19 @@ def test_new_fields_exported_per_point(db, tmp_path):
         assert k in pt
 
 
+def test_papers_export_carries_rate_category(db, tmp_path):
+    db.migrate_add_author_columns()
+    jid = build_window(db)
+    guideline = add(db, jid, "guideline", 3, pub_type="Review")     # classed by title, PubMed says Review
+    unclassified = add(db, jid, None, 1, pub_type="Review", set_class=False)
+    exp = JSONExporter(data_dir=str(tmp_path / "d"), journals_dir=str(tmp_path / "j"))
+    path = exp.export_journal_papers("hand-built", db.get_papers_for_export(jid))
+    k = {p["pmid"]: p["k"] for p in json.load(open(path))["papers"]}
+    assert k[guideline] == "guideline"          # the class the rate counts it under, not PubMed's type
+    assert k[unclassified] == "review"          # no doc_class yet: derived from pub_type, as in by_type
+    assert set(k.values()) <= set(ARTICLE_CATEGORIES)
+
+
 def test_no_official_jif_in_export(db, tmp_path):
     jid = build_window(db)
     ts = [ImpactCalculator(db).compute_rolling_if(jid, 2024, 12)]

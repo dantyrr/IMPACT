@@ -876,6 +876,8 @@ class IMPACTApp {
             // Reset window/type state for new journal
             this.currentWindow = 'timeseries';
             this.detailRateMode = 'month';
+            this._detailFocusMonth = null;
+            this._driversN = 10;
             this._renderDetailMetrics(data);
             this._showCombined = true;
             this._showIndividual = true;
@@ -898,10 +900,13 @@ class IMPACTApp {
             document.querySelectorAll('#rate-toggle .toggle-btn').forEach(b =>
                 b.classList.toggle('active', b.getAttribute('data-rate') === 'month')
             );
-            // Reset type checkboxes: only "research" checked
+            // Reset type checkboxes: the four citable types, as counted in the citation rate
             document.querySelectorAll('#type-checkboxes input').forEach(cb => {
-                cb.checked = cb.value === 'research';
+                cb.checked = CITABLE_CATEGORIES.includes(cb.value);
             });
+            document.querySelectorAll('#drivers-n-toggle .toggle-btn').forEach(b =>
+                b.classList.toggle('active', b.getAttribute('data-n') === '10')
+            );
             // Reset visibility toggles: both active
             const combBtn = document.getElementById('show-combined-btn');
             const indBtn = document.getElementById('show-individual-btn');
@@ -919,6 +924,12 @@ class IMPACTApp {
             this._populateXRangeSelects('detail', allMonths);
             const detailScaleOverrides = this._buildScaleOverrides(this.detailXMin, this.detailXMax, this.detailYMin, this.detailYMax);
             chartManager.createMultiSeriesChart('journal-chart', series, this._journalYZero, detailScaleOverrides);
+            const rateCanvas = document.getElementById('journal-chart');
+            if (rateCanvas && !rateCanvas._driversClick) {
+                rateCanvas._driversClick = true;
+                rateCanvas.addEventListener('click', evt => this._onDetailChartClick(evt));
+            }
+            this._renderDrivers(data);
             chartManager.createCompositionChart('composition-chart', ts, this._getCompositionVisibleTypes(), detailScaleOverrides, this._getCompositionBinSize());
             this._renderYearlyTypes(data);
             document.getElementById('detail-range-controls').style.display = '';
@@ -1170,6 +1181,173 @@ class IMPACTApp {
         return series;
     }
 
+    // ---- What drives the rate ----
+
+    /**
+     * Under the rate chart: each ticked type's weight in the combined rate, and
+     * the papers behind it, for one month's window (_detailFocusMonth, set by
+     * clicking the chart) or averaged over every settled month in the chart's
+     * date range. Windows are single months, whatever the rate mode.
+     *
+     * A month's window (impact_calculator): citations in the 12 months ending
+     * at the month, to papers published in WINDOW_PARAMS' paper window. Totals
+     * come from the timeseries; papers come from papers/{slug}.json (the
+     * journal's 2,000 most-cited), so the list can miss some, and the coverage
+     * note says how much of the citations it accounts for.
+     */
+    async _renderDrivers(data) {
+        const wrap = document.getElementById('drivers-wrap');
+        if (!wrap) return;
+        const token = (this._driversToken = (this._driversToken || 0) + 1);
+        const types = Array.from(document.querySelectorAll('#type-checkboxes input:checked')).map(cb => cb.value);
+        const raw = data[this.currentWindow] || data.timeseries || [];
+        if (!types.length || !raw.length) { wrap.style.display = 'none'; return; }
+
+        let papersData = this.papersDataCache[data.slug];
+        if (papersData === undefined) {
+            try { papersData = await dataLoader.loadPapers(data.slug); } catch (e) { papersData = null; }
+            this.papersDataCache[data.slug] = papersData;
+        }
+        if (token !== this._driversToken) return;
+
+        const { pw, skip } = WINDOW_PARAMS[this.currentWindow] || WINDOW_PARAMS.timeseries;
+        const idxOf = m => { const [y, mo] = m.split('-').map(Number); return y * 12 + mo - 1; };
+        const fmtIdx = i => `${MONTH_ABBR[((i % 12) + 12) % 12]} ${Math.floor(i / 12)}`;
+        const winName = WINDOW_NAMES[this.currentWindow] || WINDOW_NAMES.timeseries;
+        const typeNames = types.map(t => DOC_CATEGORY_LABELS[t]).join(' + ');
+        const settled = this._settledMonth(data);
+        const sumTypes = (p, f) => types.reduce((a, k) => a + ((p.by_type && p.by_type[k] && p.by_type[k][f]) || 0), 0);
+
+        // months to cover: the clicked one, or every settled month in the date range with papers of these types
+        const focus = this._detailFocusMonth;
+        const points = focus
+            ? raw.filter(p => p.month === focus)
+            : raw.filter(p => (!settled || p.month <= settled)
+                && (!this.detailXMin || p.month >= this.detailXMin)
+                && (!this.detailXMax || p.month <= this.detailXMax)
+                && sumTypes(p, 'papers') > 0);
+        if (!points.length) { wrap.style.display = 'none'; return; }
+        wrap.style.display = '';
+
+        const first = idxOf(points[0].month), last = idxOf(points[points.length - 1].month);
+        const scope = document.getElementById('drivers-scope');
+        if (focus) {
+            const t = idxOf(focus), paperEnd = t - 12 - skip;
+            scope.textContent = `Window ending ${fmtIdx(t)} (${winName}): citations from ${fmtIdx(t - 11)} to ${fmtIdx(t)} ` +
+                `to ${typeNames} published ${fmtIdx(paperEnd - pw + 1)} to ${fmtIdx(paperEnd)}.` +
+                (settled && focus > settled ? ' This month is provisional: citations to it are still arriving.' : '');
+        } else {
+            scope.textContent = `Averaged over the ${points.length} settled months from ${fmtIdx(first)} to ${fmtIdx(last)} ` +
+                `(${winName}), for ${typeNames}. Click a month on the chart to see that month's window.` +
+                (this.detailRateMode === 'avg12' ? ' Each month is its own window, not the 12-month average.' : '');
+        }
+        document.getElementById('drivers-all-btn').style.display = focus ? '' : 'none';
+
+        // each type's share of items and citations, and how much it moves the combined rate
+        const pct = (x, d = 0) => `${(x * 100).toFixed(d)}%`;
+        const contrib = types.map(k => {
+            let items = 0, cites = 0, itemShare = 0, citeShare = 0, lift = 0, liftN = 0;
+            points.forEach(p => {
+                const b = (p.by_type && p.by_type[k]) || {};
+                const n = sumTypes(p, 'papers'), c = sumTypes(p, 'citations');
+                const bn = b.papers || 0, bc = b.citations || 0;
+                items += bn; cites += bc;
+                itemShare += n ? bn / n : 0;
+                citeShare += c ? bc / c : 0;
+                // the combined rate without this type, relative to the combined rate
+                if (n - bn > 0 && c > 0) { lift += ((c - bc) / (n - bn)) / (c / n) - 1; liftN++; }
+            });
+            const m = points.length;
+            const L = liftN ? lift / liftN : null;
+            const liftText = types.length < 2 || L == null ? ''
+                : `; without them the combined rate would be ${pct(Math.abs(L), Math.abs(L) < 0.1 ? 1 : 0)} ` +
+                  `${L <= 0 ? 'lower' : 'higher'}${focus ? '' : ' on average'}`;
+            const head = focus
+                ? `${items.toLocaleString()} items (${pct(itemShare, itemShare < 0.1 ? 1 : 0)}), ` +
+                  `${cites.toLocaleString()} citations (${pct(citeShare)})`
+                : `on average ${pct(itemShare / m, itemShare / m < 0.1 ? 1 : 0)} of items and ${pct(citeShare / m)} of citations`;
+            return `<li><strong>${DOC_CATEGORY_LABELS[k]}</strong>: ${head}${liftText}.</li>`;
+        });
+        document.getElementById('drivers-contrib').innerHTML = contrib.join('');
+
+        // papers: citations in each window from prefix sums of their monthly counts
+        const table = document.getElementById('drivers-table');
+        const coverage = document.getElementById('drivers-coverage');
+        const papers = ((papersData && papersData.papers) || []).filter(p => types.includes(p.k));
+        if (!papers.length) {
+            table.innerHTML = '';
+            coverage.textContent = papersData && papersData.papers && !papersData.papers.some(p => p.k)
+                ? 'The paper list needs an updated papers file for this journal.' : 'No papers of these types in the paper file.';
+            return;
+        }
+        const g0 = first - 11 - pw - skip - 12, g1 = last;        // every month any window here can touch
+        const L = g1 - g0 + 1;
+        const rows = papers.map(p => {
+            const cum = new Float64Array(L + 1);
+            for (const [m, n] of Object.entries(p.cm || {})) {
+                const i = idxOf(m) - g0;
+                if (i >= 0 && i < L) cum[i + 1] += n;
+            }
+            for (let i = 0; i < L; i++) cum[i + 1] += cum[i];
+            const a = p.y * 12 + (p.m || 6) - 1;
+            const lo = a + 1 + skip, hi = a + 11 + skip + pw;    // months whose citations ever count
+            let counted = 0;
+            for (const [m, n] of Object.entries(p.cm || {})) { const i = idxOf(m); if (i >= lo && i <= hi) counted += n; }
+            return { p, a, cum, counted, cites: 0, share: 0 };
+        });
+        let covered = 0;
+        points.forEach(pt => {
+            const t = idxOf(pt.month), paperEnd = t - 12 - skip, paperStart = paperEnd - pw + 1;
+            const total = sumTypes(pt, 'citations');
+            let inWin = 0;
+            rows.forEach(r => {
+                if (r.a < paperStart || r.a > paperEnd) return;
+                const c = r.cum[t - g0 + 1] - r.cum[t - 11 - g0];
+                r.cites += c; inWin += c;
+                if (total) r.share += c / total;
+            });
+            if (total) covered += inWin / total;
+        });
+        const m = points.length;
+        rows.forEach(r => { r.share /= m; });
+        const n = this._driversN || 10;
+        const top = rows.filter(r => r.share > 0).sort((x, y) => y.share - x.share).slice(0, n);
+
+        const esc = s => UIHelpers.escapeHtml(String(s || ''));
+        const head = focus
+            ? '<th>#</th><th>Title</th><th>Type</th><th>Published</th><th class="num">Citations in window</th><th class="num">Share of window</th><th class="num">Lifetime</th>'
+            : '<th>#</th><th>Title</th><th>Type</th><th>Published</th><th class="num">Average share</th><th class="num">Citations that counted</th><th class="num">Lifetime</th>';
+        const body = top.map((r, i) => {
+            const p = r.p;
+            const pub = p.m ? `${MONTH_ABBR[p.m - 1]} ${p.y}` : `${p.y}`;
+            const title = `<a href="https://pubmed.ncbi.nlm.nih.gov/${p.pmid}/" target="_blank" rel="noopener">${esc(p.t || p.pmid)}</a>`;
+            const cells = focus
+                ? [r.cites.toLocaleString(), pct(r.share, 1)]
+                : [pct(r.share, 2), r.counted.toLocaleString()];
+            return `<tr><td>${i + 1}</td><td>${title}</td><td>${DOC_CATEGORY_LABELS[p.k] || ''}</td><td>${pub}</td>` +
+                cells.map(c => `<td class="num">${c}</td>`).join('') + `<td class="num">${(p.c || 0).toLocaleString()}</td></tr>`;
+        }).join('');
+        table.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>`;
+        coverage.textContent = `The site keeps each journal's ${(papersData.papers.length).toLocaleString()} most-cited papers; ` +
+            `they account for ${pct(covered / m)} of ${focus ? "this window's" : "these windows'"} citations to ${typeNames}. ` +
+            (focus ? 'Share is of all citations in the window to these types.'
+                : "Average share is a paper's share of each month's citations to these types, averaged over the months, " +
+                  'so it reflects how much the paper moved the line; citations that counted are those in the months any window counts.');
+    }
+
+    /** Clicking the rate chart picks the month whose window the drivers section shows. */
+    _onDetailChartClick(evt) {
+        const chart = chartManager.charts['journal-chart'];
+        const data = this.journalDataCache[this.currentJournalSlug];
+        if (!chart || !data) return;
+        const a = chart.chartArea, x = evt.offsetX, y = evt.offsetY;
+        if (x < a.left || x > a.right || y < a.top || y > a.bottom) return;
+        const els = chart.getElementsAtEventForMode(evt, 'index', { intersect: false }, true);
+        if (!els.length) return;
+        this._detailFocusMonth = chart.data.labels[els[0].index];
+        this._renderDrivers(data);
+    }
+
     /** Metric cards on the journal detail page, for the selected window and rate mode. */
     _renderDetailMetrics(data) {
         const sm = this._journalSummary(data, this.currentWindow, this.detailRateMode);
@@ -1210,8 +1388,18 @@ class IMPACTApp {
             this._populateXRangeSelects('detail', allMonths);
             const scaleOverrides = this._buildScaleOverrides(this.detailXMin, this.detailXMax, this.detailYMin, this.detailYMax);
             chartManager.createMultiSeriesChart('journal-chart', series, this._journalYZero, scaleOverrides);
+            this._renderDrivers(data);
         };
         this._redrawDetailRate = redrawRate;
+
+        this._setupToggleGroup('drivers-n-toggle', (n) => {
+            this._driversN = Number(n);
+            this._renderDrivers(data);
+        }, 'data-n');
+        document.getElementById('drivers-all-btn').onclick = () => {
+            this._detailFocusMonth = null;
+            this._renderDrivers(data);
+        };
 
         const redrawSecondary = () => {
             const rawTs = data[this.currentWindow] || data.timeseries;
