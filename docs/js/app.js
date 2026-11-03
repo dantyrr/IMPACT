@@ -1818,42 +1818,39 @@ class IMPACTApp {
         const sampledTotal = Object.values(yearCounts).reduce((s, v) => s + v, 0);
         const lifetimeAvg = sampledTotal / yearsActive;
 
-        // JIF 2-yr avg: (pub_year citations + pub_year+1 citations) / 2
-        const jifAvg = pubYear
-            ? ((yearCounts[pubYear] || 0) + (yearCounts[pubYear + 1] || 0)) / 2
-            : null;
-
-        // IMPACT 24-month avg: weighted by fraction of each calendar year in the 24-month window
-        let twentyFourMonthAvg = null;
-        let jifWindowMonths = null;
+        // A paper counts toward the JIFs of the two calendar years after it appears:
+        // its citations in pub_year+1 and pub_year+2, never those in pub_year.
         const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        if (pubYear && pubMonth) {
-            jifWindowMonths = 25 - pubMonth; // months of actual citation opportunity in JIF window
-            const fracY  = (13 - pubMonth) / 12;  // fraction of pub year in 24-mo window
-            const fracY2 = (pubMonth - 1) / 12;   // fraction of pub_year+2 in 24-mo window
-            twentyFourMonthAvg = (
-                (yearCounts[pubYear]     || 0) * fracY +
-                (yearCounts[pubYear + 1] || 0) +
-                (yearCounts[pubYear + 2] || 0) * fracY2
-            ) / 2;
-        } else if (pubYear) {
-            twentyFourMonthAvg = jifAvg; // approximate (no pub month)
-        }
+        const jifAvg = pubYear
+            ? ((yearCounts[pubYear + 1] || 0) + (yearCounts[pubYear + 2] || 0)) / 2
+            : null;
+        const jifDone = pubYear && currentYear > pubYear + 2;
+
+        // IMPACT's 24-month rolling rate: months 1-35 after publication, weighted by how
+        // many monthly readings count them (rollingCountedShare), ÷ 2 to match the JIF.
+        const month = pubMonth || 6;
+        const twentyFourMonthAvg = pubYear
+            ? Object.entries(yearCounts).reduce((a, [y, n]) => a + n * rollingCountedShare(pubYear, month, Number(y)), 0) / 2
+            : null;
+        const impactDone = pubYear && (currentYear > pubYear + 3 || (currentYear === pubYear + 3 && month === 1));
 
         const jifTip = pubYear
-            ? `Citations in ${pubYear} and ${pubYear+1} ÷ 2. ` +
-              (pubMonth ? `Published in ${MONTH_NAMES[pubMonth-1]}, so the JIF window covers only ${jifWindowMonths} months — ` +
-              `papers published earlier in the year get more citation time.` :
-              'This is the citation contribution used in the traditional Journal Impact Factor.')
-            : 'Traditional JIF calculation: first 2 calendar years ÷ 2.';
-        const impactTip = pubYear
-            ? `Citations in the 24 months from publication ÷ 2. ` +
+            ? `Citations in ${pubYear + 1} and ${pubYear + 2} ÷ 2. A paper counts toward the JIFs of the two calendar ` +
+              `years after it appears; its ${pubYear} citations never count. ` +
               (pubMonth
-                ? `For this paper (${MONTH_NAMES[pubMonth-1]} ${pubYear}), the window runs ` +
-                  `${MONTH_NAMES[pubMonth-1]} ${pubYear} → ${MONTH_NAMES[(pubMonth+10)%12]} ${pubYear+2}. ` +
-                  `Every paper gets an equal 24-month window regardless of publication month — ` +
-                  `this eliminates the calendar bias that affects the traditional JIF.`
-                : 'Every paper gets an equal 24-month window regardless of publication month.')
+                ? `Published in ${MONTH_NAMES[pubMonth - 1]}, it is ${13 - pubMonth} to ${36 - pubMonth} months old during ` +
+                  `those years, so a paper from early in the year is counted when it is older and more cited.`
+                : 'The publication month is unknown.') +
+              (jifDone ? '' : ' Not complete yet: these years are still running.')
+            : 'Citations in the two calendar years after publication ÷ 2.';
+        const impactTip = pubYear
+            ? 'The citations that enter IMPACT\'s 24-month rolling rate, ÷ 2. The paper sits in 24 monthly readings, each ' +
+              'counting 12 months of its citations, so a citation k months after publication counts in ' +
+              'min(k, 12, 36 − k) of them: months 1 to 35, most heavily months 12 to 24. Weighted that way, every paper ' +
+              'gets the equivalent of 24 months of citations, as in a JIF, with the same weighting whatever its ' +
+              'publication month. Computed from citations per year, assumed evenly spread within each year' +
+              (pubMonth ? '.' : '; the publication month is unknown, so June is assumed.') +
+              (impactDone ? '' : ' Not complete yet: the paper is under 36 months old.')
             : 'IMPACT 24-month rolling citation rate.';
 
         const pubmedCoverageTip = 'iCite counts only citations from PubMed-indexed papers. ' +
@@ -1866,10 +1863,10 @@ class IMPACTApp {
             [totalCitations.toLocaleString(), 'PubMed Citations ⓘ', '', pubmedCoverageTip],
             [lifetimeAvg.toFixed(1), 'Avg per Year (PubMed) ⓘ', '', pubmedCoverageTip],
             [jifAvg != null ? jifAvg.toFixed(1) : '—',
-                pubMonth ? `JIF 2-Yr Avg (${jifWindowMonths}-mo window) ⓘ` : 'JIF 2-Yr Avg ⓘ',
+                pubYear ? `JIF 2-Yr Avg (${pubYear + 1}–${pubYear + 2})${jifDone ? '' : ', so far'} ⓘ` : 'JIF 2-Yr Avg ⓘ',
                 '#E69F00', jifTip],
             [twentyFourMonthAvg != null ? twentyFourMonthAvg.toFixed(1) : '—',
-                'IMPACT 24-Mo Avg ⓘ',
+                `IMPACT 24-Mo Avg (weighted)${!pubYear || impactDone ? '' : ', so far'} ⓘ`,
                 '#009E73', impactTip],
         ].map(([v, l, color, tip]) =>
             `<div class="metric-card"${tip ? ` title="${tip}"` : ''}${color ? ` style="border-left:3px solid ${color}; padding-left:0.75rem;"` : ''}>` +
@@ -1929,25 +1926,20 @@ class IMPACTApp {
             const win = this._paperWindow || 1;
             const py  = this._paperPubYear;
             const pm  = this._paperPubMonth;
-            if (win === 1 && py && pm) {
+            if (win === 1 && py) {
                 const sq = (color) =>
                     `<span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;vertical-align:middle;margin-right:3px;"></span>`;
                 const sep = ' &nbsp;|&nbsp; ';
                 if (this._paperJifWindow) {
-                    const extNote = pm > 1
-                        ? `${sep}${sq('#009E73')} 24-mo extension into ${py + 2} (${pm - 1} month${pm - 1 > 1 ? 's' : ''})`
-                        : '';
                     note.innerHTML =
-                        `${sq('#E69F00')} JIF window (${py}–${py + 1})` +
-                        extNote +
-                        `${sep}${sq('#0072B2')} outside 24-mo window`;
+                        `${sq('#E69F00')} counted by the ${py + 1} and ${py + 2} JIFs` +
+                        `${sep}${sq('#0072B2')} not counted by any JIF, including ${py}, the publication year`;
                 } else {
-                    const extNote = pm > 1
-                        ? ` (includes ${pm - 1} month${pm - 1 > 1 ? 's' : ''} into ${py + 2})`
-                        : '';
                     note.innerHTML =
-                        `${sq('#009E73')} in 24-mo window${extNote}` +
-                        `${sep}${sq('#0072B2')} outside 24-mo window`;
+                        `${sq('#009E73')} share counting toward the 24-month rolling rate: months 1–35 after ` +
+                        `publication, weighted by how many monthly readings count them` +
+                        (pm ? '' : ' (publication month unknown: June assumed)') +
+                        `${sep}${sq('#0072B2')} does not count`;
                 }
                 note.style.display = '';
             } else {

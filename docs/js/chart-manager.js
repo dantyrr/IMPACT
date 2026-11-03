@@ -23,6 +23,23 @@ const DOC_CATEGORY_DASHES = {
     erratum: [1, 4], other: [12, 3], commentary: [3, 6],
 };
 
+/**
+ * Share of a paper's citations in calendar `year` that enter IMPACT's 24-month
+ * rolling rate, assuming they are spread evenly over the year. The paper sits in
+ * 24 monthly readings, each counting 12 months of its citations, so a citation
+ * k months after publication counts in min(k, 12, 36 - k) of them (k = 1..35);
+ * its weight is that / 12. Over all ages the shares add up to 2 years, the same
+ * 24 months a JIF counts, but weighted the same whatever the publication month.
+ */
+function rollingCountedShare(pubYear, pubMonth, year) {
+    let s = 0;
+    for (let mo = 1; mo <= 12; mo++) {
+        const k = (year - pubYear) * 12 + mo - pubMonth;
+        if (k >= 1 && k <= 35) s += Math.min(k, 12, 36 - k) / 12;
+    }
+    return s / 12;
+}
+
 class ChartManager {
     constructor() {
         this.charts = {};
@@ -1155,7 +1172,9 @@ class ChartManager {
      * journalName: string for legend label
      * pubYear: publication year (int) or null
      * pubMonth: publication month 1–12 or null
-     * showJifWindow: bool — highlight JIF window (pub_year + pub_year+1) in amber
+     * showJifWindow: bool — split annual bars by the JIF window (the two calendar
+     *   years after pub_year) instead of by the rolling rate's weighted window
+     *   (rollingCountedShare; June is assumed when the month is unknown)
      */
     createPaperCitationChart(canvasId, yearCounts, windowSize, journalTimeseries, journalName, pubYear, pubMonth, showJifWindow) {
         const ctx = document.getElementById(canvasId);
@@ -1168,65 +1187,31 @@ class ChartManager {
             : windowSize === 2 ? '2-Year Rolling Citations'
             : '5-Year Rolling Citations';
 
-        const stacked = windowSize === 1 && pubYear && pubMonth;
+        const stacked = windowSize === 1 && !!pubYear;
         let datasets;
 
         if (stacked) {
-            // Fraction of pub_year+2 inside the 24-month window
-            const fracIn  = (pubMonth - 1) / 12;
-            const fracOut = 1 - fracIn;
-
-            if (showJifWindow) {
-                // Three stacks: JIF window (amber) | 24-mo extension (teal) | outside (blue)
-                datasets = [
-                    {
-                        type: 'bar', label: `JIF window (${pubYear}–${pubYear + 1})`,
-                        data: years.map(y => (y === pubYear || y === pubYear + 1) ? (yearCounts[y] || 0) : 0),
-                        backgroundColor: this.palette[4] + 'bb', borderColor: this.palette[4],
-                        borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
-                    },
-                    {
-                        type: 'bar', label: `24-mo extension (into ${pubYear + 2})`,
-                        data: years.map(y => y === pubYear + 2 ? Math.round((yearCounts[y] || 0) * fracIn * 10) / 10 : 0),
-                        backgroundColor: this.palette[2] + 'bb', borderColor: this.palette[2],
-                        borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
-                    },
-                    {
-                        type: 'bar', label: 'Outside 24-mo window',
-                        data: years.map(y => {
-                            if (y === pubYear || y === pubYear + 1) return 0;
-                            if (y === pubYear + 2) return Math.round((yearCounts[y] || 0) * fracOut * 10) / 10;
-                            return yearCounts[y] || 0;
-                        }),
-                        backgroundColor: this.palette[0] + 'aa', borderColor: this.palette[0],
-                        borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
-                    },
-                ];
-            } else {
-                // Two stacks: in 24-mo window (green) | outside (blue)
-                datasets = [
-                    {
-                        type: 'bar', label: 'In 24-mo window',
-                        data: years.map(y => {
-                            if (y === pubYear || y === pubYear + 1) return yearCounts[y] || 0;
-                            if (y === pubYear + 2) return Math.round((yearCounts[y] || 0) * fracIn * 10) / 10;
-                            return 0;
-                        }),
-                        backgroundColor: this.palette[2] + 'bb', borderColor: this.palette[2],
-                        borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
-                    },
-                    {
-                        type: 'bar', label: 'Outside 24-mo window',
-                        data: years.map(y => {
-                            if (y === pubYear || y === pubYear + 1) return 0;
-                            if (y === pubYear + 2) return Math.round((yearCounts[y] || 0) * fracOut * 10) / 10;
-                            return yearCounts[y] || 0;
-                        }),
-                        backgroundColor: this.palette[0] + 'aa', borderColor: this.palette[0],
-                        borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
-                    },
-                ];
-            }
+            const round1 = v => Math.round(v * 10) / 10;
+            const counted = showJifWindow
+                ? years.map(y => (y === pubYear + 1 || y === pubYear + 2) ? (yearCounts[y] || 0) : 0)
+                : years.map(y => round1((yearCounts[y] || 0) * rollingCountedShare(pubYear, pubMonth || 6, y)));
+            const color = showJifWindow ? this.palette[4] : this.palette[2];
+            datasets = [
+                {
+                    type: 'bar',
+                    label: showJifWindow ? `Counted by the ${pubYear + 1} and ${pubYear + 2} JIFs`
+                        : 'Counts toward the 24-month rolling rate (weighted)',
+                    data: counted,
+                    backgroundColor: color + 'bb', borderColor: color,
+                    borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
+                },
+                {
+                    type: 'bar', label: showJifWindow ? 'Not counted by any JIF' : 'Does not count',
+                    data: years.map((y, i) => round1((yearCounts[y] || 0) - counted[i])),
+                    backgroundColor: this.palette[0] + 'aa', borderColor: this.palette[0],
+                    borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
+                },
+            ];
         } else {
             // Non-annual or no pub date: single bar/line
             const values = years.map(y => {
