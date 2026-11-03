@@ -44,6 +44,11 @@
                         <button class="toggle-btn active" data-window="timeseries">24-month</button>
                         <button class="toggle-btn" data-window="timeseries_5yr">5-yr (yr 2–6)</button>
                     </div>
+                    <span class="chart-controls-label" style="margin-left:1.2rem;">Rate:</span>
+                    <div class="toggle-group" id="jc-rate-toggle">
+                        <button class="toggle-btn active" data-rate="month" title="The rolling rate at one month">Single month</button>
+                        <button class="toggle-btn" data-rate="avg12" title="The mean of the 12 monthly rolling rates ending at each month">12-month average</button>
+                    </div>
                 </div>
 
                 <div class="chart-controls">
@@ -173,6 +178,11 @@
                     <button class="toggle-btn" data-window="timeseries_12mo">12-month</button>
                     <button class="toggle-btn active" data-window="timeseries">24-month</button>
                     <button class="toggle-btn" data-window="timeseries_5yr">5-yr (yr 2–6)</button>
+                </div>
+                <span class="chart-controls-label" style="margin-left:1.2rem;">Rate:</span>
+                <div class="toggle-group" id="rate-toggle">
+                    <button class="toggle-btn active" data-rate="month" title="The rolling rate at one month">Single month</button>
+                    <button class="toggle-btn" data-rate="avg12" title="The mean of the 12 monthly rolling rates ending at each month">12-month average</button>
                 </div>
             </div>
 
@@ -825,6 +835,17 @@
                 (the citation rate, the research and review rates, and the paper counts) and the flags use the latest
                 settled month of the selected window, so each card matches the chart line at that month. Charts draw the
                 later months faded, under a grey band marked Provisional.
+            </p>
+
+            <h3>12-month average</h3>
+            <p>
+                The Rate toggle on the journal and Compare pages switches the rates on the cards and the chart from a single
+                month's reading to the mean of the 12 monthly readings ending at that month. A single reading, like a
+                Journal Impact Factor read in December, depends on which month it is taken and moves with one month's
+                citations; the average does neither, and in our tests it ranks journals almost the same way, is steadier
+                from year to year and forecasts a journal's next papers as well. On the cards the average ends at the
+                latest settled month and uses only settled months; paper counts stay those of that month. A rate is shown
+                only when all 12 months have one.
             </p>
 
             <h3>Reliability flags</h3>

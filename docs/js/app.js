@@ -16,6 +16,9 @@ const WINDOW_NAMES = {
     timeseries_12mo: '12-month window',
     timeseries_5yr: '5-year window (yr 2–6)',
 };
+// Rate mode 'avg12' shows the mean of the 12 monthly readings ending at each month
+// (the settled month on the cards); 'month' shows the single reading.
+const AVG_MONTHS = 12;
 
 class IMPACTApp {
     constructor() {
@@ -38,6 +41,8 @@ class IMPACTApp {
         this._jcShowCombined = true;
         this._jcShowIndividual = true;
         this.jcWindow = 'timeseries';
+        this.jcRateMode = 'month';
+        this.detailRateMode = 'month';
         this.jcYZero = false;
         this._journalYZero = false;
         this._influenceYZero = false;
@@ -264,6 +269,11 @@ class IMPACTApp {
             this.updateJournalsTrendsChart();
         }, 'data-window');
 
+        this._setupToggleGroup('jc-rate-toggle', (mode) => {
+            this.jcRateMode = mode;
+            this.updateJournalsTrendsChart();
+        }, 'data-rate');
+
         this._setupToggleGroup('jc-y-toggle', (val) => {
             this.jcYZero = val === 'zero';
             this.updateJournalsTrendsChart();
@@ -460,6 +470,7 @@ class IMPACTApp {
             series.forEach(s => { if (s.settledMonth === undefined) s.settledMonth = settledMonth; });
         });
 
+        this._applyRateMode(series, this.jcRateMode);
         this._jcSeriesData = series;
 
         // Populate X selects from full month range (2005-01 onwards)
@@ -700,14 +711,28 @@ class IMPACTApp {
      * headline is the exported rolling_if (citations to citable items / citable
      * items), the research and review rates restrict both sides to that type.
      * Falls back to the latest point when none has settled.
+     *
+     * With mode 'avg12' the three rates are instead the mean of the 12 monthly
+     * rates ending at that point (null unless all 12 exist); paper counts stay
+     * the point's. avgFrom is the first month averaged, null in 'month' mode or
+     * when fewer than 12 months are available (the single month is shown).
      */
-    _journalSummary(j, windowKey = 'timeseries') {
+    _journalSummary(j, windowKey = 'timeseries', mode = 'month') {
         const all = j[windowKey] || j.timeseries || [];
         const settled = this._settledMonth(j);
         const ts = settled ? all.filter(d => d.month <= settled) : all;
         const lastEntry = ts.length > 0 ? ts[ts.length - 1] : null;
         const bt = lastEntry && lastEntry.by_type ? lastEntry.by_type : {};
-        const typeRate = k => (bt[k] && bt[k].papers > 0 ? bt[k].citations / bt[k].papers : null);
+        const entryTypeRate = (e, k) => {
+            const b = e && e.by_type && e.by_type[k];
+            return b && b.papers > 0 ? b.citations / b.papers : null;
+        };
+        const span = mode === 'avg12' && ts.length >= AVG_MONTHS ? ts.slice(-AVG_MONTHS) : null;
+        const avgOf = f => {
+            const v = span.map(f);
+            return v.every(x => x != null) ? v.reduce((a, b) => a + b, 0) / v.length : null;
+        };
+        const typeRate = k => (span ? avgOf(e => entryTypeRate(e, k)) : entryTypeRate(lastEntry, k));
 
         const papersOf = k => (bt[k] ? bt[k].papers || 0 : 0);
         const researchPapers = papersOf('research');
@@ -719,8 +744,9 @@ class IMPACTApp {
         const month = lastEntry ? lastEntry.month : null;
         return {
             lastEntry, month,
+            avgFrom: span ? span[0].month : null,
             windows: this._windowRanges(month, windowKey),
-            rate: lastEntry ? lastEntry.rolling_if : null,
+            rate: span ? avgOf(e => e.rolling_if) : (lastEntry ? lastEntry.rolling_if : null),
             researchRate: typeRate('research'),
             reviewRate: typeRate('review'),
             researchPapers, reviewPapers, totalPapers, citablePapers,
@@ -736,17 +762,28 @@ class IMPACTApp {
     _metricCardsHtml(sm, windowKey) {
         const w = sm.windows;
         const winName = WINDOW_NAMES[windowKey] || WINDOW_NAMES.timeseries;
-        const when = sm.month ? `${this._monthName(sm.month)} · ${winName}` : winName;
+        const avg = !!sm.avgFrom;
+        const when = !sm.month ? winName
+            : avg ? `${this._monthName(sm.avgFrom)} – ${this._monthName(sm.month)} average · ${winName}`
+            : `${this._monthName(sm.month)} · ${winName}`;
         const papersWhen = w ? `published ${w.papers}` : '';
-        const rateTip = (what) => w
-            ? `Citations received ${w.citations} to ${what} published ${w.papers}, divided by the number of those papers. ` +
+        const rateTip = (what) => !w ? ''
+            : avg
+            ? `The mean of the 12 monthly rolling rates (${winName}) from ${this._monthName(sm.avgFrom)} to ` +
+              `${this._monthName(sm.month)}, the latest settled month (later months are still collecting citations). ` +
+              `Each monthly rate is the citations received in the 12 months to that month by ${what} published in the ` +
+              `paper window before it, divided by the number of those papers; for ${this._monthName(sm.month)}, ` +
+              `citations received ${w.citations} to papers published ${w.papers}. The average is steadier than a single ` +
+              'month and does not depend on which month it is read. It matches the chart line at that month when the ' +
+              'chart shows the 12-month average.'
+            : `Citations received ${w.citations} to ${what} published ${w.papers}, divided by the number of those papers. ` +
               `This is the ${winName} rolling rate at ${this._monthName(sm.month)}, the latest settled month ` +
-              '(later months are still collecting citations), and matches the chart line at that month.'
-            : '';
+              '(later months are still collecting citations), and matches the chart line at that month.';
         const cards = [
             [UIHelpers.formatIF(sm.rate), 'Citation Rate (citable items)', when,
                 rateTip('the journal\'s citable items (research, reviews, case reports and guidelines)') +
-                ' Like a Journal Impact Factor, but recomputed every month and counting only citations to citable items.'],
+                (avg ? ' Like a Journal Impact Factor, but averaged over a year of monthly readings and counting only citations to citable items.'
+                    : ' Like a Journal Impact Factor, but recomputed every month and counting only citations to citable items.')],
             [UIHelpers.formatIF(sm.researchRate), 'Research Rate', when, rateTip('research articles')],
             [UIHelpers.formatIF(sm.reviewRate), 'Review Rate', when, rateTip('reviews')],
             [UIHelpers.formatInt(sm.citablePapers), 'Citable Items', papersWhen,
@@ -772,7 +809,7 @@ class IMPACTApp {
         const colorMap = this.jcPicker.getColorMap();
 
         container.innerHTML = journalsData.map((j, jIdx) => {
-            const sm = this._journalSummary(j, this.jcWindow);
+            const sm = this._journalSummary(j, this.jcWindow, this.jcRateMode);
             const color = colorMap[j.slug] || chartManager.palette[jIdx % chartManager.palette.length];
             const cards = this._metricCardsHtml(sm, this.jcWindow);
 
@@ -838,6 +875,7 @@ class IMPACTApp {
 
             // Reset window/type state for new journal
             this.currentWindow = 'timeseries';
+            this.detailRateMode = 'month';
             this._renderDetailMetrics(data);
             this._showCombined = true;
             this._showIndividual = true;
@@ -856,6 +894,9 @@ class IMPACTApp {
             // Sync toggle button active states
             document.querySelectorAll('#window-toggle .toggle-btn').forEach(b =>
                 b.classList.toggle('active', b.getAttribute('data-window') === 'timeseries')
+            );
+            document.querySelectorAll('#rate-toggle .toggle-btn').forEach(b =>
+                b.classList.toggle('active', b.getAttribute('data-rate') === 'month')
             );
             // Reset type checkboxes: only "research" checked
             document.querySelectorAll('#type-checkboxes input').forEach(cb => {
@@ -1072,7 +1113,7 @@ class IMPACTApp {
                 months,
                 values,
             });
-            return this._withSettledMonth(series, data);
+            return this._applyRateMode(this._withSettledMonth(series, data), this.detailRateMode);
         }
 
         // Multiple types checked: combined and/or individual lines
@@ -1102,7 +1143,7 @@ class IMPACTApp {
             });
         }
 
-        return this._withSettledMonth(series, data);
+        return this._applyRateMode(this._withSettledMonth(series, data), this.detailRateMode);
     }
 
     /** Tag rate series with the journal's settled month; later months chart as provisional. */
@@ -1112,9 +1153,26 @@ class IMPACTApp {
         return series;
     }
 
-    /** Metric cards on the journal detail page, for the selected window. */
+    /**
+     * In 'avg12' mode, replace each rate series by its trailing 12-month mean
+     * (null until 12 consecutive months have a rate) and say so in the label.
+     */
+    _applyRateMode(series, mode) {
+        if (mode !== 'avg12') return series;
+        series.forEach(s => {
+            s.values = s.values.map((_, i) => {
+                if (i < AVG_MONTHS - 1) return null;
+                const win = s.values.slice(i - AVG_MONTHS + 1, i + 1);
+                return win.every(v => v != null) ? +(win.reduce((a, b) => a + b, 0) / AVG_MONTHS).toFixed(3) : null;
+            });
+            s.label = `${s.label} (12-month average)`;
+        });
+        return series;
+    }
+
+    /** Metric cards on the journal detail page, for the selected window and rate mode. */
     _renderDetailMetrics(data) {
-        const sm = this._journalSummary(data, this.currentWindow);
+        const sm = this._journalSummary(data, this.currentWindow, this.detailRateMode);
         document.getElementById('detail-metrics').innerHTML = this._metricCardsHtml(sm, this.currentWindow);
     }
 
@@ -1168,6 +1226,13 @@ class IMPACTApp {
             redrawRate();
             redrawSecondary();
         }, 'data-window');
+
+        // Rate mode toggle — rate chart and metric cards
+        this._setupToggleGroup('rate-toggle', (mode) => {
+            this.detailRateMode = mode;
+            this._renderDetailMetrics(data);
+            redrawRate();
+        }, 'data-rate');
 
         // Article type checkboxes — only affects rate chart
         document.querySelectorAll('#type-checkboxes input').forEach(cb => {
@@ -1388,10 +1453,12 @@ class IMPACTApp {
 
     renderComparisonTable(container, journalsData) {
         const rows = journalsData.map(j => {
-            const sm = this._journalSummary(j, this.jcWindow);
+            const sm = this._journalSummary(j, this.jcWindow, this.jcRateMode);
             return {
                 journal: j.journal,
-                month: sm.month ? this._monthName(sm.month) : null,
+                month: !sm.month ? null : sm.avgFrom
+                    ? `${this._monthName(sm.avgFrom)} – ${this._monthName(sm.month)} average`
+                    : this._monthName(sm.month),
                 rate: sm.rate,
                 research_rate: sm.researchRate,
                 review_rate: sm.reviewRate,
