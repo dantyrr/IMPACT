@@ -20,6 +20,8 @@ const WINDOW_NAMES = {
 // (the settled month on the cards); 'month' shows the single reading.
 const AVG_MONTHS = 12;
 
+const WITHOUT_DASH = [7, 5];  // the Compare panel's rate with one type left out
+
 class IMPACTApp {
     constructor() {
         this.journals = [];
@@ -42,6 +44,7 @@ class IMPACTApp {
         this._jcShowIndividual = false;  // four types ticked: one line per journal until asked
         this.jcWindow = 'timeseries';
         this.jcRateMode = 'month';
+        this.jcWithout = null;  // ticked type taken out for the dashed comparison line
         this.detailRateMode = 'month';
         this.jcYZero = false;
         this._journalYZero = false;
@@ -290,6 +293,7 @@ class IMPACTApp {
                     indBtn.classList.add('active');
                 }
                 combBtn.classList.toggle('active', this._jcShowCombined);
+                if (!this._jcShowCombined) this.jcWithout = null;
                 this.updateJournalsTrendsChart();
             });
             indBtn.addEventListener('click', () => {
@@ -299,9 +303,17 @@ class IMPACTApp {
                     combBtn.classList.add('active');
                 }
                 indBtn.classList.toggle('active', this._jcShowIndividual);
+                if (this._jcShowIndividual) this.jcWithout = null;
                 this.updateJournalsTrendsChart();
             });
         }
+
+        document.getElementById('jc-without-toggle').addEventListener('click', (e) => {
+            const btn = e.target.closest('.toggle-btn');
+            if (!btn) return;
+            this._setJcWithout(btn.dataset.without || null);
+            this.updateJournalsTrendsChart();
+        });
 
         this._setupRangeControls('jc',
             { xMin: 'jcXMin', xMax: 'jcXMax', yMin: 'jcYMin', yMax: 'jcYMax' },
@@ -366,6 +378,9 @@ class IMPACTApp {
             document.querySelectorAll('#jc-type-checkboxes input:checked')
         ).map(cb => cb.value);
 
+        if (checkedTypes.length < 2 || !checkedTypes.includes(this.jcWithout)) this.jcWithout = null;
+        this._renderJcWithoutRow(checkedTypes);
+
         const chartContainer = document.getElementById('jc-chart-container');
         const hint = document.getElementById('jc-hint');
         const downloadBar = document.getElementById('jc-download-bar');
@@ -417,10 +432,20 @@ class IMPACTApp {
             return (bt && bt.papers > 0) ? +(bt.citations / bt.papers).toFixed(3) : null;
         };
 
+        const combinedRate = (entry, types) => {
+            let totalCit = 0, totalPap = 0;
+            types.forEach(typeKey => {
+                const bt = entry.by_type && entry.by_type[typeKey];
+                if (bt) { totalCit += bt.citations || 0; totalPap += bt.papers || 0; }
+            });
+            return totalPap > 0 ? +(totalCit / totalPap).toFixed(3) : null;
+        };
+
         const colorMap = this.jcPicker.getColorMap();
         const multiJournal = journalsData.length > 1;
         const multiType = checkedTypes.length > 1;
         const series = [];
+        const withoutPairs = [];
 
         journalsData.forEach((jData, jIdx) => {
             const color = colorMap[jData.slug] || chartManager.palette[jIdx % chartManager.palette.length];
@@ -438,18 +463,25 @@ class IMPACTApp {
             } else {
                 // Multiple types: combined and/or individual
                 if (this._jcShowCombined) {
-                    const values = ts.map(entry => {
-                        let totalCit = 0, totalPap = 0;
-                        checkedTypes.forEach(typeKey => {
-                            const bt = entry.by_type && entry.by_type[typeKey];
-                            if (bt) { totalCit += bt.citations || 0; totalPap += bt.papers || 0; }
-                        });
-                        return totalPap > 0 ? +(totalCit / totalPap).toFixed(3) : null;
-                    });
+                    const values = ts.map(entry => combinedRate(entry, checkedTypes));
                     const label = multiJournal
                         ? `${jData.journal} — Combined`
                         : checkedTypes.map(t => typeLabels[t]).join(' + ');
-                    series.push({ label, color, dash: [], months, values });
+                    const combined = { label, color, dash: [], months, values };
+                    series.push(combined);
+
+                    // Pushed after its solid line, so the solid line draws on top and
+                    // hides it where taking the type out changes nothing.
+                    if (this.jcWithout) {
+                        const kept = checkedTypes.filter(t => t !== this.jcWithout);
+                        const without = {
+                            label: `${multiJournal ? `${jData.journal} — without` : 'Without'} ${typeLabels[this.jcWithout]}`,
+                            color, dash: WITHOUT_DASH, months,
+                            values: ts.map(entry => combinedRate(entry, kept)),
+                        };
+                        series.push(without);
+                        withoutPairs.push({ jData, ts, combined, without });
+                    }
                 }
 
                 if (this._jcShowIndividual) {
@@ -472,6 +504,9 @@ class IMPACTApp {
 
         this._applyRateMode(series, this.jcRateMode);
         this._jcSeriesData = series;
+        this._jcWithoutNotes = Object.fromEntries(
+            withoutPairs.map(pair => [pair.jData.slug, this._withoutNote(pair)])
+        );
 
         // Populate X selects from full month range (2005-01 onwards)
         const dataMonths = [...new Set(series.flatMap(s => s.months))].sort();
@@ -801,6 +836,46 @@ class IMPACTApp {
         }).join('');
     }
 
+    /** Choose the type the dashed line leaves out. It pairs with the Combined line, so Individual goes off. */
+    _setJcWithout(type) {
+        this.jcWithout = type;
+        if (!type) return;
+        this._jcShowCombined = true;
+        this._jcShowIndividual = false;
+        document.getElementById('jc-combined-btn').classList.add('active');
+        document.getElementById('jc-individual-btn').classList.remove('active');
+    }
+
+    /** One button per ticked type; with fewer than two ticked there is nothing to compare. */
+    _renderJcWithoutRow(types) {
+        const row = document.getElementById('jc-without-controls');
+        row.style.display = types.length > 1 ? '' : 'none';
+        const btn = (value, label) =>
+            `<button class="toggle-btn${(this.jcWithout || '') === value ? ' active' : ''}" data-without="${value}">${label}</button>`;
+        document.getElementById('jc-without-toggle').innerHTML =
+            btn('', 'None') + types.map(t => btn(t, DOC_CATEGORY_LABELS[t])).join('');
+    }
+
+    /** The settled month's effect of leaving the type out, for the journal's metric cards. */
+    _withoutNote({ jData, ts, combined, without }) {
+        const label = DOC_CATEGORY_LABELS[this.jcWithout];
+        const month = this._settledMonth(jData);
+        const i = combined.months.indexOf(month);
+        const before = combined.values[i];
+        if (i < 0 || before == null) return '';
+        const span = this.jcRateMode === 'avg12' ? AVG_MONTHS : 1;
+        const removed = ts.slice(Math.max(0, i - span + 1), i + 1)
+            .reduce((n, e) => n + ((e.by_type && e.by_type[this.jcWithout] || {}).papers || 0), 0);
+        if (!removed) return `Without ${label}: no change, none in the window at ${month}`;
+        const after = without.values[i];
+        if (after == null) return `Without ${label}: no other ticked papers in the window at ${month}`;
+        const pct = before > 0 ? (after - before) / before * 100 : 0;
+        const change = Math.round(Math.abs(pct)) === 0
+            ? 'under 1%'
+            : `${pct < 0 ? '−' : '+'}${Math.round(Math.abs(pct))}%`;
+        return `Ticked types ${before.toFixed(2)} → without ${label} ${after.toFixed(2)} (${change}) at ${month}`;
+    }
+
     _renderJcMetrics(journalsData) {
         const container = document.getElementById('jc-metrics-container');
         if (!container) return;
@@ -812,10 +887,12 @@ class IMPACTApp {
             const sm = this._journalSummary(j, this.jcWindow, this.jcRateMode);
             const color = colorMap[j.slug] || chartManager.palette[jIdx % chartManager.palette.length];
             const cards = this._metricCardsHtml(sm, this.jcWindow);
+            const note = (this._jcWithoutNotes || {})[j.slug];
 
             return `<div class="compare-metrics-journal">
                 <div class="compare-metrics-header" style="border-left: 4px solid ${color}; padding-left: 0.5rem;"><a href="#" class="compare-journal-link" data-slug="${j.slug}" style="color: inherit; text-decoration: underline; cursor: pointer;">${j.journal}</a></div>
                 <div class="metrics-row">${cards}</div>
+                ${note ? `<p class="without-note">${note}</p>` : ''}
             </div>`;
         }).join('');
 

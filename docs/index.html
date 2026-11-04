@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IMPACT — Studying Publication Bias, Impact Factor Inflation &amp; H-Index Gaming</title>
-    <link rel="stylesheet" href="css/style.css?v=12">
+    <link rel="stylesheet" href="css/style.css?v=13">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -74,6 +74,10 @@
                             </div>
                         </div>
                     </div>
+                </div>
+                <div class="chart-controls" id="jc-without-controls" style="display:none;">
+                    <span class="chart-controls-label" title="Adds a dashed line per journal: the combined rate with this type taken out of both citations and papers">Compare without:</span>
+                    <div class="toggle-group" id="jc-without-toggle"></div>
                 </div>
                 <div class="chart-controls">
                     <span class="chart-controls-label">Show:</span>
@@ -949,7 +953,7 @@
 <script src="js/affil-places.js?v=2"></script>
 <script src="js/affil-location.js?v=2"></script>
 <script src="js/geo-tab.js?v=2"></script>
-<script src="js/app.js?v=46"></script>
+<script src="js/app.js?v=47"></script>
 
 </body>
 </html>

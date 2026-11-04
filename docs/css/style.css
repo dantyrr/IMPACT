@@ -498,6 +498,9 @@ canvas {
 .type-group .checkbox-grid { margin-bottom: 0; }
 .type-group-label { font-size: 0.8rem; color: var(--text-light); min-width: 12rem; }
 
+/* Compare panel: what leaving one type out does to a journal's rate */
+.without-note { font-size: 0.85rem; color: var(--text-light); margin: 0.4rem 0 0; }
+
 /* What drives the rate */
 .drivers-contrib { margin: 0.25rem 0 0.5rem; padding-left: 1.2rem; font-size: 0.9rem; line-height: 1.6; }
 #drivers-table td.num, #drivers-table th.num { text-align: right; white-space: nowrap; }
