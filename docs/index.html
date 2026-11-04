@@ -53,23 +53,33 @@
 
                 <div class="chart-controls">
                     <span class="chart-controls-label">Article type:</span>
-                    <div id="jc-type-checkboxes" class="checkbox-grid" style="margin-bottom:0;">
-                        <label><input type="checkbox" value="research" checked> Research</label>
-                        <label><input type="checkbox" value="review"> Reviews</label>
-                        <label><input type="checkbox" value="case_report"> Case Reports</label>
-                        <label><input type="checkbox" value="guideline"> Guidelines</label>
-                        <label><input type="checkbox" value="editorial"> Editorials</label>
-                        <label><input type="checkbox" value="letter"> Letters</label>
-                        <label><input type="checkbox" value="erratum"> Errata</label>
-                        <label><input type="checkbox" value="other"> Other</label>
-                        <label><input type="checkbox" value="commentary"> Commentary</label>
+                    <div id="jc-type-checkboxes" class="type-groups">
+                        <div class="type-group">
+                            <span class="type-group-label">Counted in the citation rate</span>
+                            <div class="checkbox-grid">
+                                <label><input type="checkbox" value="research" checked> Research</label>
+                                <label><input type="checkbox" value="review" checked> Reviews</label>
+                                <label><input type="checkbox" value="case_report" checked> Case Reports</label>
+                                <label><input type="checkbox" value="guideline" checked> Guidelines</label>
+                            </div>
+                        </div>
+                        <div class="type-group">
+                            <span class="type-group-label">Not counted</span>
+                            <div class="checkbox-grid">
+                                <label><input type="checkbox" value="editorial"> Editorials</label>
+                                <label><input type="checkbox" value="letter"> Letters</label>
+                                <label><input type="checkbox" value="erratum"> Errata</label>
+                                <label><input type="checkbox" value="other"> Other</label>
+                                <label><input type="checkbox" value="commentary"> Commentary</label>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="chart-controls">
                     <span class="chart-controls-label">Show:</span>
                     <div class="toggle-group" id="jc-visibility-toggle">
                         <button class="toggle-btn active" id="jc-combined-btn">Combined</button>
-                        <button class="toggle-btn active" id="jc-individual-btn">Individual</button>
+                        <button class="toggle-btn" id="jc-individual-btn">Individual</button>
                     </div>
                     <span class="chart-controls-label" style="margin-left:1.2rem;">Y-axis:</span>
                     <div class="toggle-group" id="jc-y-toggle">
@@ -939,7 +949,7 @@
 <script src="js/affil-places.js?v=2"></script>
 <script src="js/affil-location.js?v=2"></script>
 <script src="js/geo-tab.js?v=2"></script>
-<script src="js/app.js?v=45"></script>
+<script src="js/app.js?v=46"></script>
 
 </body>
 </html>

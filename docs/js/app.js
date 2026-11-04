@@ -39,7 +39,7 @@ class IMPACTApp {
         this._showCombined = true;
         this._showIndividual = true;
         this._jcShowCombined = true;
-        this._jcShowIndividual = true;
+        this._jcShowIndividual = false;  // four types ticked: one line per journal until asked
         this.jcWindow = 'timeseries';
         this.jcRateMode = 'month';
         this.detailRateMode = 'month';
