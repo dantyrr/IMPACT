@@ -26,6 +26,8 @@ class IMPACTApp {
     constructor() {
         this.journals = [];
         this.journalDataCache = {};
+        this.extras = new JournalExtras(this);
+        this.landscape = new LandscapeTab(this);
         this.authorDataCache = {};  // slug → {pmid: {f,fa,l,la}} or null if not available
         this._networkCenter = null;
         this._influenceJournalSlug = null;
@@ -130,7 +132,7 @@ class IMPACTApp {
         const link = document.querySelector(`.nav-link[data-section="${sectionId}"]`);
         if (section) section.classList.add('active');
         if (link) link.classList.add('active');
-
+        if (sectionId === 'landscape') this.landscape.show();
     }
 
     // ---- Journal List ----
@@ -223,7 +225,7 @@ class IMPACTApp {
                 <span class="chart-controls-label">Mark:</span>
                 <label class="marker-jcr"><input type="checkbox" ${mk.jcr ? 'checked' : ''}> JCR release (each June)
                     <span class="metric-info" data-tooltip="Clarivate releases the Journal Impact Factor each June (usually mid to late June), covering citations from the previous calendar year. That JIF corresponds to the December point of the year before on the 24-month line.">ⓘ</span></label>
-                <input type="text" class="marker-input" placeholder="YYYY-MM or YYYY-MM-DD" aria-label="Month or day to mark">
+                <input type="text" class="marker-input" placeholder="e.g. 2020-03-15" aria-label="Month or day to mark, as YYYY-MM or YYYY-MM-DD">
                 <button class="range-reset-btn marker-add">Add line</button>
                 <span class="marker-error" hidden>Use YYYY-MM or YYYY-MM-DD</span>
                 ${mk.dates.map(d => `<span class="marker-chip">${esc(d)}<button data-date="${esc(d)}" aria-label="Remove ${esc(d)}">×</button></span>`).join('')}`;
@@ -786,6 +788,8 @@ class IMPACTApp {
             reviewRate: typeRate('review'),
             researchPapers, reviewPapers, totalPapers, citablePapers,
             reviewPct: totalPapers > 0 ? (reviewPapers / totalPapers * 100) : null,
+            lift: span ? (avgOf(e => e.rolling_if) && typeRate('research') ? avgOf(e => e.rolling_if) / typeRate('research') - 1 : null)
+                : SiteMetrics.liftAt(lastEntry),
         };
     }
 
@@ -821,6 +825,8 @@ class IMPACTApp {
                     : ' Like a Journal Impact Factor, but recomputed every month and counting only citations to citable items.')],
             [UIHelpers.formatIF(sm.researchRate), 'Research Rate', when, rateTip('research articles')],
             [UIHelpers.formatIF(sm.reviewRate), 'Review Rate', when, rateTip('reviews')],
+            [sm.lift == null ? '—' : `${sm.lift >= 0 ? '+' : '−'}${Math.abs(100 * sm.lift).toFixed(0)}%`, 'Citable vs Research Only', when,
+                'How much the rate for all citable items differs from the rate for research articles alone.'],
             [UIHelpers.formatInt(sm.citablePapers), 'Citable Items', papersWhen,
                 'Research articles, reviews, case reports and guidelines in the paper window: the denominator of the citation rate.'],
             [UIHelpers.formatInt(sm.researchPapers), 'Research Papers', papersWhen, ''],
@@ -955,6 +961,7 @@ class IMPACTApp {
             this.detailRateMode = 'month';
             this._detailFocusMonth = null;
             this._driversN = 10;
+            this._driversSort = 'share';
             this._renderDetailMetrics(data);
             this._showCombined = true;
             this._showIndividual = true;
@@ -984,6 +991,9 @@ class IMPACTApp {
             document.querySelectorAll('#drivers-n-toggle .toggle-btn').forEach(b =>
                 b.classList.toggle('active', b.getAttribute('data-n') === '10')
             );
+            document.querySelectorAll('#drivers-sort-toggle .toggle-btn').forEach(b =>
+                b.classList.toggle('active', b.getAttribute('data-sort') === 'share')
+            );
             // Reset visibility toggles: both active
             const combBtn = document.getElementById('show-combined-btn');
             const indBtn = document.getElementById('show-individual-btn');
@@ -1007,6 +1017,7 @@ class IMPACTApp {
                 rateCanvas.addEventListener('click', evt => this._onDetailChartClick(evt));
             }
             this._renderDrivers(data);
+            this.extras.render(data);
             chartManager.createCompositionChart('composition-chart', ts, this._getCompositionVisibleTypes(), detailScaleOverrides, this._getCompositionBinSize());
             this._renderYearlyTypes(data);
             document.getElementById('detail-range-controls').style.display = '';
@@ -1388,7 +1399,8 @@ class IMPACTApp {
         const m = points.length;
         rows.forEach(r => { r.share /= m; });
         const n = this._driversN || 10;
-        const top = rows.filter(r => r.share > 0).sort((x, y) => y.share - x.share).slice(0, n);
+        const sort = this._driversSort || 'share';
+        const top = SiteMetrics.rankDrivers(rows, sort, n);
 
         const esc = s => UIHelpers.escapeHtml(String(s || ''));
         const head = focus
@@ -1405,7 +1417,8 @@ class IMPACTApp {
                 cells.map(c => `<td class="num">${c}</td>`).join('') + `<td class="num">${(p.c || 0).toLocaleString()}</td></tr>`;
         }).join('');
         table.innerHTML = `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>`;
-        coverage.textContent = `The site keeps each journal's ${(papersData.papers.length).toLocaleString()} most-cited papers; ` +
+        coverage.textContent = `Papers are ranked by ${sort === 'lifetime' ? 'lifetime citations' : focus ? 'share' : 'average share'}. ` +
+            `The site keeps each journal's ${(papersData.papers.length).toLocaleString()} most-cited papers; ` +
             `they account for ${pct(covered / m)} of ${focus ? "this window's" : "these windows'"} citations to ${typeNames}. ` +
             (focus ? 'Share is of all citations in the window to these types.'
                 : "Average share is a paper's share of each month's citations to these types, averaged over the months, " +
@@ -1469,6 +1482,10 @@ class IMPACTApp {
         };
         this._redrawDetailRate = redrawRate;
 
+        this._setupToggleGroup('drivers-sort-toggle', (sort) => {
+            this._driversSort = sort;
+            this._renderDrivers(data);
+        }, 'data-sort');
         this._setupToggleGroup('drivers-n-toggle', (n) => {
             this._driversN = Number(n);
             this._renderDrivers(data);
@@ -1786,11 +1803,19 @@ class IMPACTApp {
     }
 
     async loadCitationNetwork() {
-        const pmid = document.getElementById('network-pmid-input').value.trim().replace(/\D/g, '');
-        if (!pmid) return;
+        const ids = document.getElementById('network-pmid-input').value.match(/\d+/g) || [];
+        if (!ids.length) return;
+        const pmid = ids[0];
 
         const hint = document.getElementById('network-hint');
         const results = document.getElementById('network-results');
+        if (ids.length > 1) {
+            this._paperLookup = null;
+            hint.textContent = 'Enter one PMID at a time.';
+            hint.style.display = '';
+            results.style.display = 'none';
+            return;
+        }
         hint.textContent = 'Fetching paper data…';
         hint.style.display = '';
         results.style.display = 'none';
@@ -1798,17 +1823,21 @@ class IMPACTApp {
 
         // Reset state for new paper
         this._networkCenter = null;
+        this._paperLookup = pmid;
 
         try {
             const resp = await fetch(`https://icite.od.nih.gov/api/pubs?pmids=${pmid}`);
             if (!resp.ok) throw new Error('iCite API error');
             const json = await resp.json();
+            if (this._paperLookup !== pmid) return;
             const items = Array.isArray(json) ? json : (json.data || []);
             if (!items.length) { hint.textContent = 'Paper not found in iCite. Check the PMID.'; return; }
 
             const center = items[0];
             if (!center.citation_count) {
-                hint.textContent = 'No citing papers found for this PMID yet.';
+                const banner = SiteMetrics.retractionBanner(await dataLoader.loadRetraction(center.pmid));
+                if (this._paperLookup !== pmid) return;
+                hint.textContent = `No citing papers found for this PMID yet.${banner ? ` ${banner.text}` : ''}`;
                 return;
             }
 
@@ -1856,6 +1885,7 @@ class IMPACTApp {
         // Show panel early with loading state
         const panel = document.getElementById('paper-analytics');
         panel.style.display = '';
+        document.getElementById('paper-retraction').style.display = 'none';
         document.getElementById('paper-analytics-title').textContent = center.title || `PMID ${center.pmid}`;
         const authNames = Array.isArray(center.authors)
             ? center.authors.map(a => (typeof a === 'string') ? a : (a.fullName || a.lastName || ''))
@@ -1876,6 +1906,22 @@ class IMPACTApp {
         }
 
         const pubMonth = await this._fetchPubMonth(center.pmid);
+        if (center !== this._networkCenter) return;
+
+        // For a retracted paper, use our own yearly counts: iCite's include citations from retraction notices.
+        const retraction = await dataLoader.loadRetraction(center.pmid);
+        if (center !== this._networkCenter) return;
+        this._paperRetraction = SiteMetrics.retractionBanner(retraction);
+        const ownCounts = retraction && retraction.cy;
+        if (ownCounts) {
+            Object.keys(yearCounts).forEach(y => delete yearCounts[y]);
+            Object.assign(yearCounts, ownCounts);
+        }
+        const bannerEl = document.getElementById('paper-retraction');
+        bannerEl.style.display = this._paperRetraction ? '' : 'none';
+        bannerEl.textContent = this._paperRetraction
+            ? `${this._paperRetraction.text} ${ownCounts ? 'Citations from retraction notices are left out here.' : 'Counts are from iCite and may include citations from retraction notices.'}`
+            : '';
 
         const currentYear = new Date().getFullYear();
         if (center.year) {
@@ -1887,7 +1933,7 @@ class IMPACTApp {
         this._paperYearCounts = yearCounts;
         this._paperPubMonth = pubMonth;
 
-        const totalCitations = center.citation_count || 0;
+        const totalCitations = ownCounts ? Object.values(ownCounts).reduce((a, b) => a + b, 0) : (center.citation_count || 0);
         const pubYear = center.year;
         // Use completed years only (exclude current partial year); base avg on
         // yearCounts so it stays consistent with the bar chart.
@@ -1903,13 +1949,14 @@ class IMPACTApp {
             : null;
         const jifDone = pubYear && currentYear > pubYear + 2;
 
-        // IMPACT's 24-month rolling rate: months 1-35 after publication, weighted by how
-        // many monthly readings count them (rollingCountedShare), ÷ 2 to match the JIF.
+        // The paper's 24 months from publication, ÷ 2 to match the JIF.
         const month = pubMonth || 6;
         const twentyFourMonthAvg = pubYear
-            ? Object.entries(yearCounts).reduce((a, [y, n]) => a + n * rollingCountedShare(pubYear, month, Number(y)), 0) / 2
+            ? Object.entries(yearCounts).reduce((a, [y, n]) => a + n * SiteMetrics.paperWindowShare(pubYear, month, Number(y)), 0) / 2
             : null;
-        const impactDone = pubYear && (currentYear > pubYear + 3 || (currentYear === pubYear + 3 && month === 1));
+        const windowEnd = (pubYear || 0) * 12 + month - 1 + 23;
+        const today = new Date();
+        const impactDone = pubYear && today.getFullYear() * 12 + today.getMonth() > windowEnd;
 
         const jifTip = pubYear
             ? `Citations in ${pubYear + 1} and ${pubYear + 2} ÷ 2. A paper counts toward the JIFs of the two calendar ` +
@@ -1921,14 +1968,19 @@ class IMPACTApp {
               (jifDone ? '' : ' Not complete yet: these years are still running.')
             : 'Citations in the two calendar years after publication ÷ 2.';
         const impactTip = pubYear
-            ? 'The citations that enter IMPACT\'s 24-month rolling rate, ÷ 2. The paper sits in 24 monthly readings, each ' +
-              'counting 12 months of its citations, so a citation k months after publication counts in ' +
-              'min(k, 12, 36 − k) of them: months 1 to 35, most heavily months 12 to 24. Weighted that way, every paper ' +
-              'gets the equivalent of 24 months of citations, as in a JIF, with the same weighting whatever its ' +
-              'publication month. Computed from citations per year, assumed evenly spread within each year' +
-              (pubMonth ? '.' : '; the publication month is unknown, so June is assumed.') +
-              (impactDone ? '' : ' Not complete yet: the paper is under 36 months old.')
-            : 'IMPACT 24-month rolling citation rate.';
+            ? 'Citations in the 24 months from publication ÷ 2, so every paper gets the same window whatever its month. ' +
+              (pubMonth
+                ? `For this paper: ${MONTH_NAMES[pubMonth - 1]} ${pubYear} to ${MONTH_NAMES[windowEnd % 12]} ${Math.floor(windowEnd / 12)}. `
+                : 'The publication month is unknown, so June is assumed. ') +
+              'Computed from citations per year, assumed evenly spread within each year.' +
+              (impactDone ? '' : ' Not complete yet: the paper is under 24 months old.')
+            : 'Citations in the 24 months from publication ÷ 2.';
+
+        const counted = SiteMetrics.jifShare(yearCounts, pubYear);
+        const countedTip = pubYear
+            ? `The ${pubYear + 1} and ${pubYear + 2} JIFs are the only ones that count this paper. They count its citations ` +
+              `in those two years, ${counted.counted.toLocaleString()} of its ${counted.total.toLocaleString()} citations so far.`
+            : '';
 
         const pubmedCoverageTip = 'iCite counts only citations from PubMed-indexed papers. ' +
             'Google Scholar and Web of Science count more sources (preprints, conference papers, ' +
@@ -1943,8 +1995,20 @@ class IMPACTApp {
                 pubYear ? `JIF 2-Yr Avg (${pubYear + 1}–${pubYear + 2})${jifDone ? '' : ', so far'} ⓘ` : 'JIF 2-Yr Avg ⓘ',
                 '#E69F00', jifTip],
             [twentyFourMonthAvg != null ? twentyFourMonthAvg.toFixed(1) : '—',
-                `IMPACT 24-Mo Avg (weighted)${!pubYear || impactDone ? '' : ', so far'} ⓘ`,
+                `24-Month Citation Rate${!pubYear || impactDone ? '' : ', so far'} ⓘ`,
                 '#009E73', impactTip],
+            [counted.share != null ? `${(100 * counted.share).toFixed(1)}%` : '—', 'Citations a JIF Counts ⓘ', '', countedTip],
+            ...(this._paperRetraction && this._paperRetraction.split ? (() => {
+                const split = this._paperRetraction.split;
+                const b = SiteMetrics.beforeAfter(yearCounts, split);
+                const yearsAfter = Math.max(0, currentYear - split);
+                return [
+                    [b.before.toLocaleString(), `Citations Before ${split}`, '#0072B2', ''],
+                    [b.during.toLocaleString(), `Citations in ${split}, the Year Retracted`, '#8C8C8C', ''],
+                    [b.after.toLocaleString(), `Citations After ${split}`, '#D55E00',
+                        `Over the ${yearsAfter} year${yearsAfter === 1 ? '' : 's'} since, including the current part-year.`],
+                ];
+            })() : []),
         ].map(([v, l, color, tip]) =>
             `<div class="metric-card"${tip ? ` title="${tip}"` : ''}${color ? ` style="border-left:3px solid ${color}; padding-left:0.75rem;"` : ''}>` +
             `<span class="metric-value">${v}</span><span class="metric-label">${l}</span></div>`
@@ -1995,6 +2059,7 @@ class IMPACTApp {
             this._paperPubYear || null,
             this._paperPubMonth || null,
             this._paperJifWindow || false,
+            (this._paperRetraction && this._paperRetraction.split) || null,
         );
 
         // Color legend note below chart
@@ -2007,16 +2072,18 @@ class IMPACTApp {
                 const sq = (color) =>
                     `<span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;vertical-align:middle;margin-right:3px;"></span>`;
                 const sep = ' &nbsp;|&nbsp; ';
-                if (this._paperJifWindow) {
+                const split = this._paperRetraction && this._paperRetraction.split;
+                if (split && !this._paperJifWindow) {
+                    note.innerHTML = `${sq('#0072B2')} before retraction${sep}${sq('#8C8C8C')} ${split}, the year retracted${sep}${sq('#D55E00')} after retraction`;
+                } else if (this._paperJifWindow) {
                     note.innerHTML =
                         `${sq('#E69F00')} counted by the ${py + 1} and ${py + 2} JIFs` +
                         `${sep}${sq('#0072B2')} not counted by any JIF, including ${py}, the publication year`;
                 } else {
                     note.innerHTML =
-                        `${sq('#009E73')} share counting toward the 24-month rolling rate: months 1–35 after ` +
-                        `publication, weighted by how many monthly readings count them` +
+                        `${sq('#009E73')} citations in the 24 months from publication` +
                         (pm ? '' : ' (publication month unknown: June assumed)') +
-                        `${sep}${sq('#0072B2')} does not count`;
+                        `${sep}${sq('#0072B2')} after those 24 months`;
                 }
                 note.style.display = '';
             } else {
@@ -2488,6 +2555,12 @@ class IMPACTApp {
 
         // Paper info card
         const listEl = document.getElementById('inf-paper-list');
+        const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const stored = new Map(((papersData && papersData.papers) || []).map(x => [String(x.pmid), x]));
+        const published = (p) => {
+            const x = stored.get(String(p.pmid));
+            return x && x.m >= 1 ? `Published ${MONTH_NAMES[x.m - 1]} ${x.y}` : `Published ${p.year || 'date unknown'}`;
+        };
         listEl.innerHTML = seedPapers.map(p => {
             const inJ = seedsInJournal.some(s => s.pmid === p.pmid);
             let badge = '';
@@ -2501,11 +2574,17 @@ class IMPACTApp {
             return `
             <div class="inf-paper-row">
                 <div class="inf-paper-title">${p.title || 'Unknown title'}${badge}</div>
-                <div class="inf-paper-meta">${this._fmtAuthors(p.authors)} · ${p.journal || ''} · ${p.year || ''} · ${(p.citation_count || 0).toLocaleString()} citations ·
+                <div class="inf-paper-meta">${this._fmtAuthors(p.authors)} · ${p.journal || ''} · <span data-inf-published="${p.pmid}">${published(p)}</span> · ${(p.citation_count || 0).toLocaleString()} citations ·
                     <a href="https://pubmed.ncbi.nlm.nih.gov/${p.pmid}/" class="pubmed-link" target="_blank" rel="noopener">PMID ${p.pmid}</a>
                 </div>
             </div>`;
         }).join('<hr class="inf-paper-divider">');
+        // Papers outside the journal's stored 2,000 get their month from PubMed.
+        seedPapers.filter(p => !(stored.get(String(p.pmid)) || {}).m).forEach(async p => {
+            const month = await this._fetchPubMonth(p.pmid);
+            const el = listEl.querySelector(`[data-inf-published="${p.pmid}"]`);
+            if (month && el) el.textContent = `Published ${MONTH_NAMES[month - 1]} ${p.year}`;
+        });
 
         const windowKey = this._influenceWindow || 'timeseries';
         const ts = journalData[windowKey] || journalData.timeseries || [];
@@ -2822,7 +2901,7 @@ class IMPACTApp {
             },
         });
         document.getElementById('influence-range-controls').style.display = '';
-
+        this.extras.renderMove(journalData, seedsInJournal, papersData);
         }
 
     _downloadInfluence(format) {

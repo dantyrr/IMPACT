@@ -37,6 +37,11 @@ docs/data/authors/
 docs/data/papers/
 docs/data/classes/
 docs/data/geo/
+docs/data/retractions/
+docs/data/citers/
+docs/data/series/
+docs/data/journal_measures.json
+docs/data/landscape.json
 
 # Local research/manuscript files
 Citations_JIF_paper/
@@ -48,3 +53,6 @@ data/last_update_status.json
 # Isolated worktrees and agent scratch space
 .worktrees/
 .superpowers/
+
+# Local analysis outputs (large)
+data/analysis/

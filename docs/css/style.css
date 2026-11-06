@@ -1586,3 +1586,12 @@ tr.row-excluded td {
 .geo-neg { color: #D55E00; }
 .geo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 @media (max-width: 760px) { .geo-grid { grid-template-columns: 1fr; } }
+
+/* Cards from the JIF paper */
+.extras-card { margin-top: 1.5rem; }
+#inf-move-range { flex: 1; max-width: 320px; margin: 0 0.75rem; }
+.retraction-banner { margin: 0 0 1rem; padding: 0.6rem 0.8rem; border-left: 3px solid #D55E00; background: var(--bg); font-size: 0.88rem; color: var(--text); }
+.extras-compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem 1.5rem; }
+.extras-compare-label { font-size: 0.82rem; color: var(--text-light); }
+.extras-compare-value { font-size: 1.15rem; font-weight: 600; margin: 0.1rem 0 0.25rem; }
+.extras-compare-value span { font-size: 0.78rem; font-weight: 400; color: var(--text-light); }

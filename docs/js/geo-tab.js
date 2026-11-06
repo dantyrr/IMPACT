@@ -58,6 +58,7 @@ class GeoTab {
         this.scope = 'world';
         this.measure = 'n';            // 'n' papers involving | 'f' fractional credit
         this.showLines = true;
+        this.trendMode = 'lines';      // 'lines' | 'stacked' (by region, world scope only)
         this.y0 = null;
         this.y1 = null;
         this.cache = {};
@@ -256,6 +257,13 @@ class GeoTab {
     // ---- controls ----
 
     _wireControls() {
+        this._all('trend-toggle').forEach(btn => {
+            btn.onclick = () => {
+                this.trendMode = btn.dataset.trend;
+                this._all('trend-toggle').forEach(b => b.classList.toggle('active', b === btn));
+                if (this.data) this._renderTrend();
+            };
+        });
         this._all('scope-toggle').forEach(btn => {
             btn.addEventListener('click', () => {
                 this.scope = btn.dataset.scope;
@@ -522,13 +530,17 @@ class GeoTab {
                 .attr('stop-color', legend.scale(legend.min + s * (legend.max - legend.min)));
         });
         const g = svg.append('g').attr('font-size', 11).attr('fill', '#2c3e50');
-        g.append('rect').attr('x', x - 6).attr('y', y - 18).attr('width', w + 12).attr('height', 46)
+        const panel = g.append('rect').attr('x', x - 6).attr('y', y - 18).attr('width', w + 12).attr('height', 46)
             .attr('fill', '#ffffff').attr('fill-opacity', 0.85).attr('rx', 4);
         g.append('rect').attr('x', x).attr('y', y).attr('width', w).attr('height', h).attr('fill', `url(#${id})`);
         const fmt = v => `${(100 * v).toFixed(1)}%`;
         if (legend.type === 'diverging') {
-            g.append('text').attr('x', x).attr('y', y - 5).text(legend.left);
-            g.append('text').attr('x', x + w).attr('y', y - 5).attr('text-anchor', 'end').text(legend.right);
+            // One line each: long journal names would collide on a shared line.
+            const widths = [[legend.left, legend.min, y - 19], [legend.right, legend.max, y - 5]].map(([label, value, ty]) => {
+                g.append('rect').attr('x', x).attr('y', ty - 8).attr('width', 9).attr('height', 9).attr('fill', legend.scale(value));
+                return g.append('text').attr('x', x + 13).attr('y', ty).text(label).node().getComputedTextLength() + 13;
+            });
+            panel.attr('y', y - 32).attr('height', 60).attr('width', Math.max(w, ...widths) + 12);
             g.append('text').attr('x', x).attr('y', y + h + 13).text(`−${(100 * legend.max).toFixed(1)} pts`);
             g.append('text').attr('x', x + w).attr('y', y + h + 13).attr('text-anchor', 'end').text(`+${(100 * legend.max).toFixed(1)} pts`);
         } else {
@@ -571,7 +583,43 @@ class GeoTab {
         el.innerHTML = `<table class="data-table geo-table"><thead><tr><th>Pair</th><th>Papers</th><th>Share</th></tr></thead><tbody>${body}</tbody></table>`;
     }
 
+    /** Each region's share of author credit by year, from 2014 when PubMed began recording every author's affiliation. */
+    _renderStackedTrend() {
+        const years = Object.keys(this.data.papers).map(Number).filter(y => y >= 2014 && y < new Date().getFullYear()).sort((a, b) => a - b);
+        const shares = SiteMetrics.regionShares(this.data.countries, years);
+        const colors = { 'USA': '#0072B2', 'Canada': '#56B4E9', 'Europe': '#E69F00', 'China': '#D55E00', 'Other Asia': '#009E73', 'Rest of world': '#8C8C8C' };
+        const chartId = `${this.prefix}-trend-chart`;
+        chartManager._destroy(chartId);
+        chartManager.charts[chartId] = new Chart(this._el('trend-chart'), {
+            type: 'line',
+            data: {
+                labels: years,
+                datasets: SiteMetrics.REGION_ORDER.map(r => ({
+                    label: r, data: shares[r].map(v => (v == null ? null : +(100 * v).toFixed(2))),
+                    borderColor: colors[r], backgroundColor: colors[r], borderWidth: 1, fill: true, pointRadius: 0, tension: 0,
+                })),
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    title: { display: true, text: `${this.data.journal}: authors by region` },
+                    subtitle: { display: true, text: 'Share of fractional author credit. Authors of papers in the journal, not citers. Starts in 2014, when PubMed began recording every author\'s affiliation.' },
+                    legend: { position: 'bottom' },
+                    tooltip: { callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}%` } },
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Publication year' } },
+                    y: { stacked: true, min: 0, max: 100, title: { display: true, text: '% of author credit' } },
+                },
+            },
+        });
+    }
+
     _renderTrend() {
+        const controls = this._el('trend-controls');
+        if (controls) controls.style.display = this.scope === 'world' ? '' : 'none';
+        if (this.trendMode === 'stacked' && this.scope === 'world') return this._renderStackedTrend();
         const cfg = GEO_SCOPES[this.scope];
         const years = Object.keys(this.data.papers).map(Number).sort((a, b) => a - b);
         const level = this.data[cfg.level] || {};

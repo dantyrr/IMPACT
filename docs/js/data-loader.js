@@ -104,6 +104,37 @@ class DataLoader {
         return data;
     }
 
+    /** A paper's retraction record, or null if it has none or the file can't be read. */
+    async loadRetraction(pmid) {
+        try {
+            const shard = await this._fetch(`${this.baseUrl}/retractions/${Number(pmid) % 64}.json`);
+            return shard[pmid] || null;
+        } catch (e) { return null; }
+    }
+
+    async loadRetractionSummary() {
+        try { return await this._fetch(`${this.baseUrl}/retractions/summary.json`); } catch (e) { return null; }
+    }
+
+    async loadMeasures() {
+        try { return await this._fetch(`${this.baseUrl}/journal_measures.json`); } catch (e) { return null; }
+    }
+
+    async loadCiters(slug) {
+        try { return await this._fetch(`${this.baseUrl}/citers/${slug}.json`); } catch (e) { return null; }
+    }
+
+    async loadSeries(slug) {
+        try {
+            const listed = await this._fetch(`${this.baseUrl}/series/index.json`);
+            return listed.includes(slug) ? await this._fetch(`${this.baseUrl}/series/${slug}.json`) : null;
+        } catch (e) { return null; }
+    }
+
+    async loadLandscape() {
+        return this._fetch(`${this.baseUrl}/landscape.json`);
+    }
+
     async _fetch(url) {
         if (this.cache[url]) return this.cache[url];
         const response = await fetch(url);

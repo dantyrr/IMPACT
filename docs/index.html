@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IMPACT — Studying Publication Bias, Impact Factor Inflation &amp; H-Index Gaming</title>
-    <link rel="stylesheet" href="css/style.css?v=13">
+    <link rel="stylesheet" href="css/style.css?v=14">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
@@ -22,6 +22,7 @@
         <a href="#authors" class="nav-link" data-section="authors">Authors</a>
         <a href="#geography" class="nav-link" data-section="geography">Geography</a>
         <a href="#influence" class="nav-link" data-section="influence">Influence</a>
+        <a href="#landscape" class="nav-link" data-section="landscape">Landscape</a>
         <a href="#about" class="nav-link" data-section="about">About</a>
     </nav>
 </header>
@@ -276,6 +277,11 @@
                         <button class="toggle-btn active" data-n="10">10</button>
                         <button class="toggle-btn" data-n="20">20</button>
                     </div>
+                    <span class="chart-controls-label" style="margin-left:1rem;">Sort by:</span>
+                    <div class="toggle-group" id="drivers-sort-toggle">
+                        <button class="toggle-btn active" data-sort="share">Share of the rate</button>
+                        <button class="toggle-btn" data-sort="lifetime">Lifetime citations</button>
+                    </div>
                     <button class="range-reset-btn" id="drivers-all-btn" style="display:none; margin-left:1rem;">Show all months</button>
                 </div>
                 <div class="table-scroll" style="max-height:560px;">
@@ -283,6 +289,8 @@
                 </div>
                 <p class="section-note" id="drivers-coverage"></p>
             </div>
+
+            <div id="journal-extras"></div>
 
             <div id="composition-type-checkboxes" class="checkbox-grid" style="display:none; margin-bottom: 0.5rem;">
                 <label><input type="checkbox" value="research" checked> Research</label>
@@ -363,6 +371,7 @@
             <div id="paper-analytics" style="display:none;">
                 <h4 id="paper-analytics-title" style="margin:1.2rem 0 0.2rem; font-size:1rem; color:var(--text); font-weight:600;"></h4>
                 <p id="paper-analytics-meta" style="margin:0 0 1rem; font-size:0.88rem; color:var(--text-light);"></p>
+                <p id="paper-retraction" class="retraction-banner" style="display:none;"></p>
                 <div class="metrics-row" id="paper-analytics-stats"></div>
                 <div class="chart-controls" style="margin-top:1rem;">
                     <span class="chart-controls-label">Window:</span>
@@ -373,8 +382,8 @@
                     </div>
                     <span class="chart-controls-label" style="margin-left:1.2rem;">Overlays:</span>
                     <div class="toggle-group" id="paper-jif-toggle">
-                        <button class="toggle-btn active" data-jif="off">JIF Window: Off</button>
-                        <button class="toggle-btn" data-jif="on">JIF Window: On</button>
+                        <button class="toggle-btn active" data-jif="off" title="Green bars show citations in the paper's 24 months from publication.">JIF Window: Off</button>
+                        <button class="toggle-btn" data-jif="on" title="Shows the two calendar years after publication, the only citations a JIF counts for this paper.">JIF Window: On</button>
                     </div>
                 </div>
                 <div class="chart-container" style="margin-top:0.5rem;">
@@ -647,6 +656,12 @@
             </div>
 
             <div class="authors-chart-card" style="margin-top:1rem;">
+                <div class="chart-controls" id="geo-trend-controls">
+                    <div class="toggle-group" id="geo-trend-toggle">
+                        <button class="toggle-btn active" data-trend="lines">Lines</button>
+                        <button class="toggle-btn" data-trend="stacked">Stacked by region</button>
+                    </div>
+                </div>
                 <div class="chart-container" style="height:420px;">
                     <canvas id="geo-trend-chart"></canvas>
                 </div>
@@ -682,6 +697,18 @@
 
             <div class="metrics-row" id="influence-metrics"></div>
             <p class="section-note" id="influence-caveat" style="display:none;"></p>
+
+            <div id="inf-move-wrap" class="authors-chart-card" style="display:none; margin-bottom:1rem;">
+                <h4>Move this paper</h4>
+                <p class="section-note">What would change if this paper and all its citations had come out earlier or later.</p>
+                <div class="chart-controls">
+                    <label for="inf-move-range" class="chart-controls-label">Months:</label>
+                    <input type="range" id="inf-move-range" min="-11" max="11" step="1" value="0">
+                    <span id="inf-move-label"></span>
+                </div>
+                <div class="metrics-row" id="inf-move-metrics"></div>
+                <p class="section-note" id="inf-move-note"></p>
+            </div>
 
             <div class="influence-view-row" id="influence-view-row">
                 <label>
@@ -740,6 +767,19 @@
     </section>
 
     <!-- ============ ABOUT ============ -->
+    <section id="landscape" class="section">
+        <h2>Publishing Landscape</h2>
+        <p class="section-desc">How publication timing, a few heavily cited papers, publishers, institutions and retractions shape citation rates across all journals. <span id="landscape-asof"></span></p>
+        <div class="chart-controls">
+            <div class="toggle-group" id="landscape-groups"></div>
+        </div>
+        <div class="section-label">Mark a journal on the charts that show journals</div>
+        <div id="landscape-journal-picker" style="max-width:420px;"></div>
+        <p id="landscape-hint" class="data-note" style="margin-top:1rem;">Loading…</p>
+        <div id="landscape-charts"></div>
+    </section>
+
+    <!-- About -->
     <section id="about" class="section">
         <h2>About IMPACT</h2>
         <div class="about-content">
@@ -779,7 +819,8 @@
             <h3>Data Sources</h3>
             <p>
                 <strong>PubMed baseline and update files</strong> — ~40M records with metadata, author affiliations, and publication dates.<br>
-                <strong>NIH iCite Open Citation Collection</strong> — citation links between PubMed papers, downloaded and processed locally.
+                <strong>NIH iCite Open Citation Collection</strong> — citation links between PubMed papers, downloaded and processed locally.<br>
+                <strong><a href="https://retractionwatch.com/the-retraction-watch-database/" target="_blank" rel="noopener">Retraction Watch Database</a></strong> — retraction dates and reasons, made publicly available by <a href="https://www.crossref.org/documentation/retrieve-metadata/retraction-watch/" target="_blank" rel="noopener">Crossref</a>.
             </p>
 
             <h3>Research-Only Citation Rate</h3>
@@ -923,6 +964,34 @@
                 rules to one researcher's included papers, reading affiliations from PubMed. Institutions are not
                 resolved yet.
             </p>
+            <h3>Retractions</h3>
+            <p>
+                The list of retracted papers combines PubMed's retraction tags with the Retraction Watch
+                Database, which Crossref makes publicly available, matched by PMID or DOI. The Retraction
+                Watch copy was downloaded on October 31, 2026. Dates come from Retraction Watch where it
+                has the paper, otherwise from PubMed's notice. Of the 37,389 papers, 3,602 have no usable
+                date and 21 were later reinstated. Those papers show a notice but no before-and-after split.
+            </p>
+            <p>
+                A retracted paper's yearly chart and its before, year-of-retraction and after counts use
+                IMPACT's stored citations, which leave out citations made by errata, retraction notices and
+                expressions of concern. Papers outside the stored set, such as those published before 2003,
+                use live iCite counts instead, and the page says so. iCite's counts can include those notices.
+            </p>
+
+            <h3>Snapshot data</h3>
+            <p>
+                The weekly update does not refresh these parts of the site: Landscape, How This Journal
+                Compares, Who Cites This Journal, Recurring Series and the Retractions cards. They come from
+                analysis files built in early November 2026, so they can lag the rest of the site.
+            </p>
+            <p>
+                Who Cites This Journal covers citations made in 2024 to citable items from 2022 and 2023.
+                Each citing paper is split equally across its authors' countries, and citations with no
+                located author are left out. The Landscape page uses citation-year rates in the style of the
+                JIF, computed from PubMed citations. They are not Clarivate's JIF values.
+            </p>
+
             <p>
                 The complete document, with the code locations for every rule, is
                 <a href="https://github.com/dantyrr/IMPACT/blob/main/METHODOLOGY.md" target="_blank" rel="noopener">METHODOLOGY.md on GitHub</a>.
@@ -938,6 +1007,7 @@
         <a href="https://github.com/dantyrr" target="_blank">Daniel Tyrrell</a>.
         Data from <a href="https://pubmed.ncbi.nlm.nih.gov/" target="_blank">PubMed</a> &amp;
         <a href="https://icite.od.nih.gov/" target="_blank">NIH iCite</a>.
+        Retraction data from the <a href="https://retractionwatch.com/the-retraction-watch-database/" target="_blank" rel="noopener">Retraction Watch Database</a>, via Crossref.
     </p>
     <p>Last updated: <span id="last-updated">—</span></p>
     <p>Charts use the <a href="https://www.nature.com/articles/nmeth.1618" target="_blank" rel="noopener">Okabe-Ito colorblind-safe palette</a>.
@@ -946,14 +1016,17 @@
 
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
-<script src="js/data-loader.js?v=8"></script>
-<script src="js/chart-manager.js?v=10"></script>
+<script src="js/data-loader.js?v=11"></script>
+<script src="js/chart-manager.js?v=13"></script>
 <script src="js/ui-helpers.js?v=4"></script>
 <script src="js/journal-picker.js?v=3"></script>
 <script src="js/affil-places.js?v=2"></script>
 <script src="js/affil-location.js?v=2"></script>
-<script src="js/geo-tab.js?v=2"></script>
-<script src="js/app.js?v=47"></script>
+<script src="js/site-metrics.js?v=4"></script>
+<script src="js/journal-extras.js?v=5"></script>
+<script src="js/landscape-tab.js?v=8"></script>
+<script src="js/geo-tab.js?v=4"></script>
+<script src="js/app.js?v=53"></script>
 
 </body>
 </html>

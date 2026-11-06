@@ -174,6 +174,14 @@ Institutions are not resolved yet: an affiliation counts for its country and sta
 
 ---
 
+## Retractions and snapshot data
+
+The list of retracted papers combines PubMed's retraction tags with the [Retraction Watch Database](https://retractionwatch.com/the-retraction-watch-database/), which [Crossref makes publicly available](https://www.crossref.org/documentation/retrieve-metadata/retraction-watch/), matched by PMID or DOI. The Retraction Watch copy was downloaded on October 31, 2026. Dates come from Retraction Watch where it has the paper, otherwise from PubMed's notice. Of the 37,389 papers, 3,602 have no usable date and 21 were later reinstated. Those papers show a notice but no before-and-after split.
+
+A retracted paper's yearly chart and its before, year-of-retraction and after counts use stored citations, which leave out citations made by errata, retraction notices and expressions of concern. Papers outside the stored set, such as those published before 2003, use live iCite counts instead, and the page says so.
+
+Landscape, How This Journal Compares, Who Cites This Journal, Recurring Series and the Retractions cards come from `data/analysis/` files built in early November 2026, through `scripts/export_site_extras.py`. The weekly update does not refresh them. Who Cites This Journal covers citations made in 2024 to citable items from 2022 and 2023, with each citing paper split equally across its authors' countries.
+
 ## Limitations
 
 1. **PubMed is not all of science.** Coverage is strongest in biomedicine and thin in some other fields. Citations from papers outside PubMed are not counted.

@@ -23,23 +23,6 @@ const DOC_CATEGORY_DASHES = {
     erratum: [1, 4], other: [12, 3], commentary: [3, 6],
 };
 
-/**
- * Share of a paper's citations in calendar `year` that enter IMPACT's 24-month
- * rolling rate, assuming they are spread evenly over the year. The paper sits in
- * 24 monthly readings, each counting 12 months of its citations, so a citation
- * k months after publication counts in min(k, 12, 36 - k) of them (k = 1..35);
- * its weight is that / 12. Over all ages the shares add up to 2 years, the same
- * 24 months a JIF counts, but weighted the same whatever the publication month.
- */
-function rollingCountedShare(pubYear, pubMonth, year) {
-    let s = 0;
-    for (let mo = 1; mo <= 12; mo++) {
-        const k = (year - pubYear) * 12 + mo - pubMonth;
-        if (k >= 1 && k <= 35) s += Math.min(k, 12, 36 - k) / 12;
-    }
-    return s / 12;
-}
-
 class ChartManager {
     constructor() {
         this.charts = {};
@@ -293,14 +276,14 @@ class ChartManager {
 
         const datasets = allTypes
             .filter(t => shown.includes(t))
-            .map(type => ({
+            .map((type, i) => ({
                 label: typeConfig[type].label,
                 data: getData(type),
                 borderColor: typeConfig[type].color,
                 backgroundColor: typeConfig[type].bg,
                 borderWidth: 1.5,
                 tension: 0.3,
-                fill: true,
+                fill: i === 0 ? 'origin' : '-1',
                 pointRadius: 0,
                 pointHoverRadius: 4,
             }));
@@ -400,14 +383,14 @@ class ChartManager {
 
             const typeConfig = this._compositionTypeConfig();
 
-            const datasets = allTypes.filter(t => shown.includes(t)).map(type => ({
+            const datasets = allTypes.filter(t => shown.includes(t)).map((type, i) => ({
                 label: typeConfig[type].label,
                 data: getData(type),
                 borderColor: typeConfig[type].color,
                 backgroundColor: typeConfig[type].bg,
                 borderWidth: 1.5,
                 tension: 0.3,
-                fill: true,
+                fill: i === 0 ? 'origin' : '-1',
                 pointRadius: 0,
                 pointHoverRadius: 4,
             }));
@@ -1173,10 +1156,10 @@ class ChartManager {
      * pubYear: publication year (int) or null
      * pubMonth: publication month 1–12 or null
      * showJifWindow: bool — split annual bars by the JIF window (the two calendar
-     *   years after pub_year) instead of by the rolling rate's weighted window
-     *   (rollingCountedShare; June is assumed when the month is unknown)
+     *   years after pub_year) instead of by the paper's 24 months from publication
+     *   (SiteMetrics.paperWindowShare; June is assumed when the month is unknown)
      */
-    createPaperCitationChart(canvasId, yearCounts, windowSize, journalTimeseries, journalName, pubYear, pubMonth, showJifWindow) {
+    createPaperCitationChart(canvasId, yearCounts, windowSize, journalTimeseries, journalName, pubYear, pubMonth, showJifWindow, retractionYear = null) {
         const ctx = document.getElementById(canvasId);
         if (!ctx) return;
         this._destroy(canvasId);
@@ -1190,23 +1173,37 @@ class ChartManager {
         const stacked = windowSize === 1 && !!pubYear;
         let datasets;
 
-        if (stacked) {
+        if (stacked && retractionYear && !showJifWindow) {
+            const part = (label, color, keep) => ({
+                type: 'bar', label, data: years.map(y => (keep(y) ? (yearCounts[y] || 0) : 0)),
+                backgroundColor: color + 'cc', borderColor: color, borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
+            });
+            datasets = [
+                part('Before retraction', '#0072B2', y => y < retractionYear),
+                part('Year retracted', '#8C8C8C', y => y === retractionYear),
+                part('After retraction', '#D55E00', y => y > retractionYear),
+            ];
+        } else if (stacked) {
             const round1 = v => Math.round(v * 10) / 10;
             const counted = showJifWindow
                 ? years.map(y => (y === pubYear + 1 || y === pubYear + 2) ? (yearCounts[y] || 0) : 0)
-                : years.map(y => round1((yearCounts[y] || 0) * rollingCountedShare(pubYear, pubMonth || 6, y)));
+                : years.map(y => round1((yearCounts[y] || 0) * SiteMetrics.paperWindowShare(pubYear, pubMonth || 6, y)));
             const color = showJifWindow ? this.palette[4] : this.palette[2];
             datasets = [
                 {
                     type: 'bar',
                     label: showJifWindow ? `Counted by the ${pubYear + 1} and ${pubYear + 2} JIFs`
-                        : 'Counts toward the 24-month rolling rate (weighted)',
+                        : 'In the 24 months from publication',
+                    desc: showJifWindow
+                        ? 'A JIF counts a paper\'s citations in the two calendar years after it appears, never those in its publication year.'
+                        : 'Citations in the 24 months from publication. Every paper gets the same window whatever its month. Yearly counts are assumed even within each year.',
                     data: counted,
                     backgroundColor: color + 'bb', borderColor: color,
                     borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
                 },
                 {
-                    type: 'bar', label: showJifWindow ? 'Not counted by any JIF' : 'Does not count',
+                    type: 'bar', label: showJifWindow ? 'Not counted by any JIF' : 'Outside those 24 months',
+                    desc: showJifWindow ? 'Citations in the publication year, or more than two calendar years after it.' : 'Citations after the paper\'s first 24 months.',
                     data: years.map((y, i) => round1((yearCounts[y] || 0) - counted[i])),
                     backgroundColor: this.palette[0] + 'aa', borderColor: this.palette[0],
                     borderWidth: 1, stack: 'cit', yAxisID: 'y', order: 1,
@@ -1275,8 +1272,22 @@ class ChartManager {
             };
         }
 
+        const retractionLine = {
+            id: 'retractionLine',
+            afterDatasetsDraw: (chart) => {
+                const i = labels.indexOf(String(retractionYear));
+                if (!retractionYear || showJifWindow || i < 0) return;
+                const x = chart.scales.x.getPixelForValue(i), { top, bottom } = chart.chartArea, c = chart.ctx;
+                c.save();
+                c.strokeStyle = '#222222'; c.lineWidth = 1; c.setLineDash([5, 4]);
+                c.beginPath(); c.moveTo(x, top); c.lineTo(x, bottom); c.stroke();
+                c.restore();
+            },
+        };
+
         this.charts[canvasId] = new Chart(ctx, {
             type: 'bar',
+            plugins: [retractionLine],
             data: { labels, datasets },
             options: {
                 responsive: true,
@@ -1286,7 +1297,9 @@ class ChartManager {
                 plugins: {
                     legend: {
                         display: stacked || datasets.length > 1,
-                        labels: { color: '#c8d8e8', boxWidth: 14 },
+                        labels: { color: '#444444', boxWidth: 14 },
+                        onHover: (e, item, legend) => { e.native.target.title = legend.chart.data.datasets[item.datasetIndex].desc || ''; },
+                        onLeave: (e) => { e.native.target.title = ''; },
                     },
                     tooltip: {
                         callbacks: {
