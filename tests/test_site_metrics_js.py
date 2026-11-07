@@ -192,3 +192,32 @@ def test_rank_drivers_sorts_by_share_or_lifetime():
             {"id": 3, "share": 0.1, "p": {}}, {"id": 4, "share": 0, "p": {"c": 5000}}]
     assert [r["id"] for r in run("rankDrivers", rows, "share", 2)] == [1, 2]
     assert [r["id"] for r in run("rankDrivers", rows, "lifetime", 3)] == [2, 1, 3]
+
+
+def test_rolling_windows_step_one_year():
+    w = run("rollingWindows", 2001, 2025, 5)
+    assert len(w) == 21 and w[0] == {"start": 0, "from": 2001, "to": 2005, "label": "2001–05"} and w[-1]["label"] == "2021–25"
+
+
+def test_window_point_uses_the_five_years_of_that_window():
+    p = run("windowPoint", [1, 2, 3, 4, 5, 6], [0, 1, 0, 0, 1, 1], [10, 10, 10, 10, 10, 10], [4, 4, 4, 4, 4, 4], 1, 5)
+    assert p == {"papers": 20, "flagship": 3, "x": 0.4, "y": 0.15}
+
+
+def test_window_point_with_no_flagship_list():
+    assert run("windowPoint", [1, 1], [], [2, 2], [1, 1], 0, 2) == {"papers": 2, "flagship": 0, "x": 0.5, "y": 0}
+
+
+def test_search_ignores_accents_case_and_order():
+    names = [["Universite de Lausanne", 50], ["Université de Montréal", 90], ["Stanford University", 200], ["University of Tokyo", 100]]
+    assert run("searchInstitutions", names, "montreal", 5) == [1]
+    assert run("searchInstitutions", names, "TOKYO univ", 5) == [3]
+
+
+def test_search_puts_names_starting_with_the_query_first_then_larger():
+    names = [["East Stanford Clinic", 500], ["Stanford University", 200], ["Stanford Health", 300]]
+    assert run("searchInstitutions", names, "stan", 2) == [2, 1]
+
+
+def test_search_with_no_query_returns_nothing():
+    assert run("searchInstitutions", [["Stanford University", 200]], "  ", 5) == []

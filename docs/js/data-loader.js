@@ -131,6 +131,10 @@ class DataLoader {
         } catch (e) { return null; }
     }
 
+    async loadInstitutionBubbles() {
+        return this._fetch(`${this.baseUrl}/institution_bubbles.json`);
+    }
+
     async loadLandscape() {
         return this._fetch(`${this.baseUrl}/landscape.json`);
     }

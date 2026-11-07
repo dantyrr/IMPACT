@@ -15,7 +15,7 @@ Data sources: PubMed Annual Baseline + update files (~40M records) + iCite Open 
 - `src/pipeline/` — Core modules: config, db_manager, pubmed_fetcher, icite_fetcher, impact_calculator, doc_class, journal_flags, pubmed_xml, json_exporter
 - `scripts/` — Standalone pipeline scripts (download, process, compute, upload)
 - `docs/` — Static SPA (index.html, js/, css/, data/)
-- `docs/js/` — app.js (main controller), chart-manager.js, data-loader.js, journal-picker.js, ui-helpers.js, site-metrics.js (pure functions, tested through node), journal-extras.js (extra journal cards), landscape-tab.js (Landscape section)
+- `docs/js/` — app.js (main controller), chart-manager.js, data-loader.js, journal-picker.js, ui-helpers.js, site-metrics.js (pure functions, tested through node), journal-extras.js (extra journal cards), landscape-tab.js (Landscape section), institution-bubbles.js (moving institution plot on one canvas, in Landscape)
 - `data/` — Local SQLite databases (gitignored): impact.db, pubmed_full.db, pmid_dates.db
 
 ## Data Flow
@@ -31,7 +31,7 @@ Data sources: PubMed Annual Baseline + update files (~40M records) + iCite Open 
 - `python scripts/run_weekly_update.py` — Incremental update (new papers + citations)
 - `python scripts/upload_to_r2.py` — Sync JSON to Cloudflare R2
 - `python scripts/mark_noncounting_citations.py [--dry-run]` — Mark stored citations made by errata/retraction notices/EoCs (backfill; inserts mark them already)
-- `python scripts/export_site_extras.py [retractions|measures|citers|series|landscape]` — Reformat `data/analysis/` and paper-figure files into `docs/data/` (retractions/, citers/, series/, journal_measures.json, landscape.json); no pipeline run
+- `python scripts/export_site_extras.py [retractions|measures|citers|series|landscape|bubbles]` — Reformat `data/analysis/` and paper-figure files into `docs/data/` (retractions/, citers/, series/, journal_measures.json, landscape.json, institution_bubbles.json); no pipeline run
 - `python scripts/validate_exports.py [--since YYYY-MM-DD]` — Verify JSON export completeness and v2 shape (fails files older than --since, default today)
 - `sqlite3 data/impact.db` — Query the main database directly
 

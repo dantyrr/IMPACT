@@ -11,6 +11,7 @@ class LandscapeTab {
         this.group = null;
         this.slug = null;
         this.reports = null;
+        this.bubbles = null;
     }
 
     /** Pick a journal: loads its guidelines and recurring series for the annual reports chart. */
@@ -80,6 +81,7 @@ class LandscapeTab {
     render() {
         document.querySelectorAll('#landscape-groups .toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.group === this.group));
         const wrap = document.getElementById('landscape-charts');
+        if (this.bubbles) this.bubbles.destroy();
         wrap.innerHTML = '';
         Object.keys(chartManager.charts).filter(id => id.startsWith('landscape-')).forEach(id => chartManager._destroy(id));
         this.data.groups.find(g => g.id === this.group).charts.forEach(spec => this._renderCard(wrap, spec));
@@ -91,6 +93,11 @@ class LandscapeTab {
         card.innerHTML = `<h4>${spec.title}</h4><p class="section-note">${spec.note}</p>`;
         wrap.appendChild(card);
         const id = `landscape-${spec.id}`;
+        if (spec.type === 'institutions') {
+            this.bubbles = this.bubbles || new InstitutionBubbles(spec.defaults);
+            this.bubbles.mount(card);
+            return;
+        }
         if (spec.type === 'set') return this._renderSet(card, spec, id);
         const shown = this._withJournal(spec);
         this._draw(card, id, shown, this._height(shown));

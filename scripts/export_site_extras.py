@@ -4,7 +4,7 @@
 Reads data/analysis/ (a snapshot, not refreshed by the weekly update) and impact.db read-only, with no pass over the
 citations table, and writes under docs/data/.
 
-Usage: python scripts/export_site_extras.py [retractions|measures|citers|series|landscape ...]   (all if none given)
+Usage: python scripts/export_site_extras.py [retractions|measures|citers|series|landscape|bubbles ...]   (all if none given)
 """
 import collections
 import csv
@@ -190,9 +190,14 @@ def export_citers(out_dir=OUT):
 def export_series(out_dir=OUT):
     """series/{slug}.json for journals with recurring series: each series' title, citable PMIDs and lifetime citations."""
     Z = np.load(os.path.join(ANALYSIS, "series_v2.npz"), allow_pickle=True)
-    sid, keys = Z["sid"], Z["keys"]
+    sid, keys = Z["sid"].copy(), Z["keys"]
     M = matrix()
     pmid, py, dc, C = M["pmid"], M["pub_year"], M["doc_class"], M["counts"]
+    # The NCBI series under its three titles: "...Information", "...Information in 2023" and, in 2003, "...Biotechnology".
+    titles = [str(t) for _, t in keys]
+    home = titles.index("database resources of the national center for biotechnology information")
+    sid[sid == titles.index("database resources of the national center for biotechnology information in")] = home
+    sid[pmid == 12519941] = home
     idx = np.flatnonzero(sid >= 0)
     groups = collections.defaultdict(list)
     for i, s in zip(idx.tolist(), sid[idx].tolist()):
@@ -213,7 +218,7 @@ def export_series(out_dir=OUT):
 
 
 BLUE, VERMILION, GREEN, ORANGE, SKY, PURPLE, GRAY, INK = "#0072B2", "#D55E00", "#009E73", "#E69F00", "#56B4E9", "#CC79A7", "#8C8C8C", "#222222"
-REGION_COLORS = [("USA", BLUE), ("Canada", SKY), ("Europe", ORANGE), ("China", VERMILION), ("Other Asia", GREEN), ("Rest of world", GRAY)]
+REGION_COLORS = [("USA", BLUE), ("Canada", PURPLE), ("Europe", ORANGE), ("China", VERMILION), ("Other Asia", GREEN), ("Rest of world", GRAY)]
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 NO_JUNE = [m for m in MONTHS if m != "Jun"]
 NO_JUNE_NOTE = "June is left out, because papers with no month are dated June."
@@ -270,7 +275,7 @@ def timing_charts():
 def reliance_charts():
     t = read_csv("v2/data/f4b_top_paper_share_trend.csv")
     d = read_csv("v2/data/f4d_most_concentrated.csv")
-    a = read_csv("data/fig2a_recurring_series_merged.csv")
+    a = read_csv("v8/data/fig2a_recurring_series_merged.csv")
     g = read_csv("data/fig11_ranked_guidelines.csv")[:15]
     abbr = dict(db().execute("SELECT name, abbreviation FROM journals"))
     pct = lambda k: [round(100 * num(r, k), 2) for r in t]
@@ -283,6 +288,20 @@ def reliance_charts():
         hbar("guideline_falls", "Largest falls in the rate without guidelines", "Journals with at least 300 citable items and reference lists for most of them, at November 2025, without items PubMed tags as guidelines.",
              [abbr.get(r["journal"], r["journal"]) for r in g], [round(-100 * num(r, "change"), 1) for r in g], "Fall in the 24-month rate (%)"),
     ]
+
+
+OWNER_NOTE = "One entry per current owner: Elsevier includes Cell Press and the Lancet journals; Springer Nature includes Nature Portfolio, BMC and Cureus; Wiley includes Hindawi."
+OWNER_COLORS = {"Other": "#E4E4E4", "BMJ": "#882255", "RSC": "#DDCC77", "SAGE": "#332288", "Oxford UP": "#999933", "ACS": "#8C510A", "Taylor & Francis": "#AA99DD", "Wolters Kluwer": "#117733",
+                "Elsevier": GRAY, "Wiley": SKY, "Springer Nature": VERMILION, "AAAS": INK, "PLOS": BLUE, "Frontiers": GREEN, "MDPI": ORANGE}
+OWNED = {"Hindawi": "Hindawi (Wiley)", "Cureus": "Cureus (Springer Nature)"}
+TIER_COLORS = {"Nature": INK, "Cell": INK, "Science": INK, "Nature-branded research": VERMILION, "Cell-family research": VERMILION, "Science-branded": VERMILION, "Nature Reviews": PURPLE, "Trends reviews": PURPLE,
+               "Nature Communications": ORANGE, "Cell Reports family": ORANGE, "Next four journals": ORANGE, "Communications, npj, Sci Data": SKY, "iScience": SKY,
+               "Society and partner journals": GRAY, "Current Biol, partners, other": GRAY, "All other journals": GRAY, "Other PLOS journals": GRAY, "Other AAAS": GRAY}
+
+
+def tier_color(group):
+    """As in the paper's stacks: black flagship, orange flagship-named, pink reviews, yellow next tier, light blue newer broad, blue largest journal, gray the rest."""
+    return TIER_COLORS.get(group, BLUE)
 
 
 def publishing_charts():
@@ -301,22 +320,36 @@ def publishing_charts():
     look = {(r["journal"], int(r["year"])): int(r["citable_items"]) for r in A}
     largest = line("largest", "Largest journals", "Citable items per year, for the six largest journals by peak year, preprint servers left out.", years,
                    [s(n, [look.get((n, y)) for y in years], c) for n, c in zip(names, colors)], "Year", "Citable items per year", yMin=0)
-    pn, py_, pv = by_series("B", 100)
-    share = line("publisher_share", "Open-access publishers' share of PubMed", "Share of all PubMed citable items per year, by DOI prefix.", py_, [s(n, pv(n), c) for n, c in zip(pn, colors)], "Year", "Share of citable items (%)", yMin=0)
-    cn, cy, cv = by_series("C", 100)
-    review = line("review_share", "Reviews, by publisher", "Reviews as a share of citable items, for years with at least 500 items.", cy, [s(n, cv(n), c) for n, c in zip(cn, colors)], "Year", "Reviews (%)", yMin=0)
+    def owners(path, value, scale=100):
+        rows = read_csv(path)
+        names = list(dict.fromkeys(r["publisher"] for r in rows))
+        years = sorted({int(r["year"]) for r in rows})
+        look = {(r["publisher"], int(r["year"])): num(r, value) for r in rows}
+        return years, [s(n, [round(look[(n, y)] * scale, 3) if (n, y) in look else None for y in years], OWNER_COLORS[n]) for n in names]
+    sy, ss = owners("v8/data/s9b_publisher_share.csv", "share_of_citable_items")
+    share = line("publisher_share", "Publishers' share of PubMed", f"Share of all PubMed citable items per year, for the seven publishers with the most reviews in 2023\u201325. {OWNER_NOTE}", sy, ss, "Year", "Share of citable items (%)", yMin=0)
+    ry, rs = owners("v8/data/f2d_review_share.csv", "share")
+    review = line("review_share", "Reviews, by publisher", f"Reviews as a share of citable items, for years with at least 500 items. {OWNER_NOTE}", ry, rs, "Year", "Reviews (%)", yMin=0)
+    E = read_csv("v8/data/f1e_pubmed_by_publisher.csv")
+    total = {"id": "by_publisher", "type": "stack", "title": "Citable items by publisher", "x": "Year", "y": "Citable items per year", "labels": [int(r["year"]) for r in E],
+             "note": f"From each paper's DOI prefix. {OWNER_NOTE} A society's own prefix stays with the society, and \u201cAll others\u201d also holds papers with no DOI in journals with no clear publisher.",
+             "series": [s("All others" if n == "Other" else n, [int(r[n]) for r in E], OWNER_COLORS[n]) for n in OWNER_COLORS]}
     D = [r for r in F if r["panel"] == "D"]
+    G = read_csv("v8/data/s9dk_publisher_groups.csv")
     tiers = {}
-    for panel, fam in (("E", "Nature Portfolio"), ("F", "Cell Press"), ("G", "AAAS")):
-        tn, ty, tv = by_series(panel)
-        tiers[fam] = {"type": "stack", "labels": ty, "series": [s(n, tv(n), c) for n, c in zip(tn, [INK, VERMILION, PURPLE, ORANGE, SKY, BLUE, GRAY])], "x": "Year", "y": "Citable items per year"}
+    for fam in dict.fromkeys(r["publisher"] for r in G):
+        rows = [r for r in G if r["publisher"] == fam]
+        years = sorted({int(r["year"]) for r in rows})
+        look = {(r["group"], int(r["year"])): int(r["citable_items"]) for r in rows}
+        groups = list(dict.fromkeys(r["group"] for r in rows))
+        tiers[OWNED.get(fam, fam)] = {"type": "stack", "labels": years, "series": [s(g, [look.get((g, y)) for y in years], tier_color(g)) for g in groups], "x": "Year", "y": "Citable items per year"}
     return [
-        {"id": "lift_hist", "type": "hist", "measure": "lift", "title": "Lift in the rate from non-research items", "note": "The 24-month rate for all citable items over the rate for research articles alone, at November 2025."},
-        {"id": "lift_scatter", "type": "scatter", "title": "Lift against the share of reviews", "note": "Each dot is a journal, at November 2025. A few journals with a lift above 200% are off the chart.", "x": "Reviews as a share of citable items (%)", "y": "Lift over research-only rate (%)",
+        {"id": "lift_hist", "type": "hist", "measure": "lift", "title": "How much non-research items raise the rate", "note": "The 24-month rate for all citable items over the rate for research articles alone, at November 2025."},
+        {"id": "lift_scatter", "type": "scatter", "title": "That rise against the share of reviews", "note": "Each dot is a journal, at November 2025. A few journals with a rise above 200% are off the chart.", "x": "Reviews as a share of citable items (%)", "y": "Rise over research-only rate (%)",
          "points": [{"x": round(100 * num(r, "review_share_items"), 1), "y": round(100 * num(r, "lift_from_reviews"), 1), "label": r["journal"], "slug": r["slug"]} for r in L], "yMin": -60, "yMax": 200},
-        largest, share, review,
-        hbar("review_journals", "Journals publishing the most reviews", "Reviews published 2023\u201325, any publisher.", [f"{r['series']} ({r['year_or_publisher']})" for r in D], [int(num(r, "value")) for r in D], "Reviews published, 2023\u201325"),
-        {"id": "tiers", "type": "set", "title": "Publisher tiers", "note": "Citable items per year, stacked by tier. The scale changes with the publisher unless shared scale is ticked.", "sets": tiers, "sharedScale": True},
+        total, largest, share, review,
+        hbar("review_journals", "Journals publishing the most reviews", "Reviews published 2023\u201325, any publisher.", [f"{r['series']} ({OWNED.get(r['year_or_publisher'], r['year_or_publisher']).replace('Cureus (Springer Nature)', 'Springer Nature')})" for r in D], [int(num(r, "value")) for r in D], "Reviews published, 2023\u201325"),
+        {"id": "tiers", "type": "set", "title": "Publisher tiers", "note": "Citable items per year, stacked by journal group. Nature Portfolio is part of Springer Nature and Cell Press of Elsevier; Cell Press includes Current Biology, the Trends journals, Heliyon and partner titles. Cureus is one journal. The scale changes with the publisher unless shared scale is ticked.", "sets": tiers, "sharedScale": True},
     ]
 
 
@@ -332,6 +365,9 @@ def people_charts():
     colors = dict(zip(["North America", "Europe", "China", "Other Asia", "Rest of world"], [BLUE, ORANGE, VERMILION, GREEN, GRAY]))
     with_flagship = [r for r in I if int(r["flagship_papers"]) > 0]
     return [
+        {"id": "institution_moves", "type": "institutions", "title": "Where flagship papers came from, 2001\u20132025",
+         "note": "Each dot is an institution with at least 200 first-author papers in 2001\u201325, and moves through five-year windows, one year apart. Across, its share of all PubMed papers; up, its share of papers in Nature, Science, Cell, NEJM and Lancet. Dot size is its flagship papers. Each paper counts once, for its first author's first-named institution, because PubMed kept only that affiliation until about 2014. Names are as written in PubMed, so one institution can appear under more than one name. Search for an institution to follow it, or click a dot.",
+         "defaults": ["Stanford University", "Chinese Academy of Sciences", "Tsinghua University"]},
         {"id": "institutions", "type": "scatter", "title": "Institution links in all journals and in five flagships", "note": "Each dot is an institution with at least 1,000 PubMed papers in 2021\u201325 and a paper in Nature, Science, Cell, NEJM or Lancet. A link is one institution on one paper. Log scales.",
          "x": "Share of links, all PubMed journals (%)", "y": "Share of links, five flagships (%)", "log": True, "diagonal": True,
          "points": [{"x": round(100 * num(r, "share_all"), 5), "y": round(100 * num(r, "share_flagship"), 5), "label": r["institution"].title(), "color": colors[r["region"]]} for r in with_flagship], "groups": colors},
@@ -369,7 +405,7 @@ def geography_charts():
 
 def retraction_charts():
     T = read_csv("data/fig7_retractions.csv")
-    P = read_csv("data/fig7c_ranked.csv")
+    P = read_csv("v9/data/fig7c_ranked.csv")
     E = read_csv("v2/data/f12e_around_retraction.csv")
     H = read_csv("v2/data/f12h_by_age.csv")
     def stack(panel, cid, title, note):
@@ -385,7 +421,7 @@ def retraction_charts():
     return [
         stack("A", "by_year_published", "Retracted papers, by year published", "Retracted papers in PubMed journals. Sources: Retraction Watch and PubMed."),
         stack("B", "by_year_retracted", "Retracted papers, by year retracted", "Dated retractions only."),
-        hbar("publisher_rate", "Retraction rate by publisher", "Retracted papers per 10,000 citable items published 2015\u201323, for every publisher with at least 20,000 items.", [r["publisher"] for r in P], [num(r, "per_10000") for r in P], "Retracted per 10,000 citable items"),
+        hbar("publisher_rate", "Retraction rate by publisher", "Retracted papers per 10,000 citable items published 2015\u201323, for every publisher with at least 20,000 items, by current owner. Hindawi, bought by Wiley in January 2021, is shown apart from the rest of Wiley.", [OWNED.get(r["publisher"], r["publisher"]) for r in P], [num(r, "per_10000") for r in P], "Retracted per 10,000 citable items"),
         hbar("most_retractions", "Journals with the most retractions", "All years. The hover text gives retracted papers as a share of the journal's citable items.", [r["series"].split(" : ")[0] for r in D], [int(num(r, "a")) for r in D], "Retracted papers", hover=[f"{100 * num(r, 'b'):.1f}% of citable items" for r in D]),
         line("around_retraction", "Citations per year before and after retraction", f"Mean citations per paper for {int(E[0]['papers']):,} papers retracted 2010\u201319, at least 4 years after publication, against controls from the same journal, year and article type with similar citations before retraction.",
              [int(r["years_from_retraction"]) for r in E], [s("Retracted papers", [num(r, "retracted_mean") for r in E], VERMILION), s("Matched controls", [num(r, "controls_mean") for r in E], BLUE)], "Years from retraction (0 = year retracted)", "Citations per paper per year", yMin=0),
@@ -402,8 +438,20 @@ def export_landscape(out_dir=OUT):
     return {g["id"]: len(g["charts"]) for g in data["groups"]}
 
 
+def export_bubbles(out_dir=OUT):
+    """institution_bubbles.json: first-author papers per institution per year, from data/analysis/institution_years.npz (10-31-26/scripts/v7_inst_years.py)."""
+    D = np.load(os.path.join(ANALYSIS, "institution_years.npz"))
+    first = int(D["first_year"])
+    years = D["all"].shape[1]
+    rows = [[str(n).removeprefix("The "), int(r), a.tolist(), f.tolist() if f.any() else []] for n, r, a, f in zip(D["names"], D["region"], D["all"], D["flag"])]
+    data = {"asOf": "Nov 2026", "firstYear": first, "lastYear": first + years - 1, "window": 5, "regions": [{"name": str(n), "color": str(c)} for n, c in zip(D["regions"], D["colors"])],
+            "denomAll": D["denom_all"].tolist(), "denomFlag": D["denom_flag"].tolist(), "regionAll": D["reg_all"].tolist(), "regionFlag": D["reg_flag"].tolist(), "institutions": rows}
+    write_json(out_dir, "institution_bubbles.json", data)
+    return len(rows)
+
+
 def main():
-    jobs = {"retractions": export_retractions, "measures": export_measures, "citers": export_citers, "series": export_series, "landscape": export_landscape}
+    jobs = {"retractions": export_retractions, "measures": export_measures, "citers": export_citers, "series": export_series, "landscape": export_landscape, "bubbles": export_bubbles}
     for name in sys.argv[1:] or list(jobs):
         print(name, jobs[name](), flush=True)
 

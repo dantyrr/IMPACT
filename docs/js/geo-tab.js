@@ -587,7 +587,7 @@ class GeoTab {
     _renderStackedTrend() {
         const years = Object.keys(this.data.papers).map(Number).filter(y => y >= 2014 && y < new Date().getFullYear()).sort((a, b) => a - b);
         const shares = SiteMetrics.regionShares(this.data.countries, years);
-        const colors = { 'USA': '#0072B2', 'Canada': '#56B4E9', 'Europe': '#E69F00', 'China': '#D55E00', 'Other Asia': '#009E73', 'Rest of world': '#8C8C8C' };
+        const colors = { 'USA': '#0072B2', 'Canada': '#CC79A7', 'Europe': '#E69F00', 'China': '#D55E00', 'Other Asia': '#009E73', 'Rest of world': '#8C8C8C' };
         const chartId = `${this.prefix}-trend-chart`;
         chartManager._destroy(chartId);
         chartManager.charts[chartId] = new Chart(this._el('trend-chart'), {

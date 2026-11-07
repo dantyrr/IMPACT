@@ -259,7 +259,7 @@ class JournalExtras {
             `Citations made in ${c.year} to citable items from ${c.year - 2}–${String(c.year - 1).slice(2)}, as of Nov 2026. Each citing paper is split equally across its authors' countries; ` +
             `${c.located.toLocaleString()} of ${c.citations.toLocaleString()} citations have a located author.`);
         const regions = SiteMetrics.REGION_ORDER;
-        const colors = { 'USA': '#0072B2', 'Canada': '#56B4E9', 'Europe': '#E69F00', 'China': '#D55E00', 'Other Asia': '#009E73', 'Rest of world': '#8C8C8C' };
+        const colors = { 'USA': '#0072B2', 'Canada': '#CC79A7', 'Europe': '#E69F00', 'China': '#D55E00', 'Other Asia': '#009E73', 'Rest of world': '#8C8C8C' };
         const sum = (shares) => { const o = Object.fromEntries(regions.map(r => [r, 0])); for (const [k, v] of Object.entries(shares)) o[SiteMetrics.regionOf(k)] += v; return o; };
         const cite = sum(c.countries), auth = sum(c.authors);
         const canvas = this._chartBox(card, 'extras-citers-chart', 170);

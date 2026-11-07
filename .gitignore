@@ -42,6 +42,7 @@ docs/data/citers/
 docs/data/series/
 docs/data/journal_measures.json
 docs/data/landscape.json
+docs/data/institution_bubbles.json
 
 # Local research/manuscript files
 Citations_JIF_paper/

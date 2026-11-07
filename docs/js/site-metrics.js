@@ -213,7 +213,45 @@ const SiteMetrics = (() => {
         return { rows, removed: found.length, missing: want.size - found.length };
     }
 
-    return { CITABLE, REGION_ORDER, regionOf, regionShares, jifShare, topPaperSeries, earlyShare, liftAt, movedJif, retractionBanner, rankPhrase, beforeAfter, rateWithout, paperWindowShare, reportMonths, rankDrivers };
+    /** Overlapping windows of `size` years, one year apart. */
+    function rollingWindows(first, last, size) {
+        const out = [];
+        for (let y = first; y + size - 1 <= last; y++) {
+            out.push({ start: y - first, from: y, to: y + size - 1, label: `${y}\u2013${String(y + size - 1).slice(2)}` });
+        }
+        return out;
+    }
+
+    function windowSum(row, start, size) {
+        let n = 0;
+        for (let i = start; i < start + size && i < row.length; i++) n += row[i];
+        return n;
+    }
+
+    /** One institution in one window: its papers and flagship papers, and its share of each. */
+    function windowPoint(all, flag, denomAll, denomFlag, start, size) {
+        const papers = windowSum(all, start, size), flagship = windowSum(flag, start, size);
+        return { papers, flagship, x: papers / windowSum(denomAll, start, size), y: flagship / windowSum(denomFlag, start, size) };
+    }
+
+    function fold(text) {
+        return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    }
+
+    /** Indexes of `[name, size]` rows holding every word of the query: names starting with it first, then the largest. */
+    function searchInstitutions(rows, query, limit) {
+        const q = fold(query).trim();
+        if (!q) return [];
+        const words = q.split(/\s+/);
+        const hits = [];
+        rows.forEach(([name, size], i) => {
+            const n = fold(name);
+            if (words.every(w => n.includes(w))) hits.push({ i, first: n.startsWith(words[0]) ? 0 : 1, size });
+        });
+        return hits.sort((a, b) => a.first - b.first || b.size - a.size).slice(0, limit).map(h => h.i);
+    }
+
+    return { rollingWindows, windowSum, windowPoint, searchInstitutions, CITABLE, REGION_ORDER, regionOf, regionShares, jifShare, topPaperSeries, earlyShare, liftAt, movedJif, retractionBanner, rankPhrase, beforeAfter, rateWithout, paperWindowShare, reportMonths, rankDrivers };
 })();
 
 if (typeof module !== 'undefined') module.exports = SiteMetrics;

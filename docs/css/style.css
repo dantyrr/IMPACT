@@ -1595,3 +1595,23 @@ tr.row-excluded td {
 .extras-compare-label { font-size: 0.82rem; color: var(--text-light); }
 .extras-compare-value { font-size: 1.15rem; font-weight: 600; margin: 0.1rem 0 0.25rem; }
 .extras-compare-value span { font-size: 0.78rem; font-weight: 400; color: var(--text-light); }
+
+/* Moving institution bubble plot (Landscape) */
+.ib-search { position: relative; max-width: 420px; margin-top: 0.75rem; }
+.ib-input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; font: inherit; background: var(--surface); color: var(--text); }
+.ib-results { position: absolute; z-index: 20; left: 0; right: 0; margin: 2px 0 0; padding: 0; list-style: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); max-height: 280px; overflow-y: auto; }
+.ib-results li { padding: 0.4rem 0.75rem; cursor: pointer; }
+.ib-results li.active, .ib-results li:hover { background: var(--bg); }
+.ib-results li.ib-none { cursor: default; color: var(--text-light); }
+.ib-results small { color: var(--text-light); }
+.ib-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.6rem 0; min-height: 1.6rem; }
+.ib-chip { padding: 0.15rem 0.55rem; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font-size: 0.8rem; cursor: pointer; }
+.ib-player { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+.ib-play { min-width: 4.5rem; padding: 0.35rem 0.8rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font: inherit; cursor: pointer; }
+.ib-slider { flex: 1; min-width: 0; }
+.ib-label { min-width: 4.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+.ib-stage { position: relative; }
+.ib-stage canvas { display: block; width: 100%; }
+.ib-tip { position: absolute; z-index: 10; padding: 0.35rem 0.55rem; max-width: 260px; background: #222222; color: #ffffff; font-size: 0.78rem; line-height: 1.35; border-radius: 5px; pointer-events: none; }
+.ib-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 0.9rem; margin-top: 0.4rem; font-size: 0.82rem; }
+.ib-key i { display: inline-block; width: 10px; height: 10px; margin-right: 0.3rem; border-radius: 50%; }
