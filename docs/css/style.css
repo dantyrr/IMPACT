@@ -416,6 +416,20 @@ canvas {
     color: white;
 }
 
+/* On a phone the buttons wrap: a clipped row would hide the last ones, with no way to reach them */
+@media (max-width: 768px) {
+    .toggle-group {
+        flex-wrap: wrap;
+        gap: 1px;
+        background: var(--border);
+    }
+
+    .toggle-btn {
+        flex: 1 1 auto;
+        border-right: none;
+    }
+}
+
 /* ---- Author Utilities ---- */
 
 .loading-text {
