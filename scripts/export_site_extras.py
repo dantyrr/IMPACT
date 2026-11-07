@@ -10,8 +10,10 @@ import collections
 import csv
 import json
 import os
+import re
 import sqlite3
 import sys
+import unicodedata
 
 import numpy as np
 
@@ -360,10 +362,10 @@ def plain_name(key):
 
 
 def people_charts():
-    I = read_csv("v11/data/f11a_institutions.csv")
-    R = read_csv("v11/data/f11b_regions.csv")
-    C = read_csv("v11/data/f11c_concentration.csv")
-    D = read_csv("v11/data/f11d_over_representation.csv")
+    I = read_csv("v12/data/f11a_institutions.csv")
+    R = read_csv("v12/data/f11b_regions.csv")
+    C = read_csv("v12/data/f11c_concentration.csv")
+    D = read_csv("v12/data/f11d_over_representation.csv")
     A = read_csv("data/fig4a_author_count_buckets.csv")
     B = read_csv("data/fig4b_papers_100plus_authors_by_year.csv")
     journals = ["nature", "science", "cell", "nejm", "lancet"]
@@ -444,17 +446,21 @@ def export_landscape(out_dir=OUT):
     return {g["id"]: len(g["charts"]) for g in data["groups"]}
 
 
+# Names the key cannot spell.
+BUBBLE_NAMES = {"mcgill university": "McGill University", "charite universitatsmedizin berlin": "Charité – Universitätsmedizin Berlin"}
+
+
 def export_bubbles(out_dir=OUT):
     """institution_bubbles.json: first-author papers per institution per year, from data/analysis/institution_years.npz (10-31-26/scripts/v7_inst_years.py)."""
     D = np.load(os.path.join(ANALYSIS, "institution_years.npz"))
     first = int(D["first_year"])
     years = D["all"].shape[1]
     names = [str(n).removeprefix("The ") for n in D["names"]]
-    seen = collections.Counter(names)
-    # A raw name can be shared, as when campuses are all written "University of California": those rows use their full key.
+    # A raw name can say less or more than its key: campuses all written "University of California", or "University of Virginia Medical School" for all of Virginia. Those rows use their full key.
     small = {"of", "and", "at", "the", "in", "for"}
     full = lambda key: " ".join(w if i and w in small else w.capitalize() for i, w in enumerate(str(key).split()))  # noqa: E731
-    names = [full(k) if seen[n] > 1 else n for n, k in zip(names, D["keys"])]
+    plain = lambda name: " ".join(re.sub(r"[^a-z0-9]+", " ", unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()).split())  # noqa: E731
+    names = [BUBBLE_NAMES.get(str(k)) or (n if plain(n) == str(k) else full(k)) for n, k in zip(names, D["keys"])]
     rows = [[n, int(r), a.tolist(), f.tolist() if f.any() else []] for n, r, a, f in zip(names, D["region"], D["all"], D["flag"])]
     data = {"asOf": "Nov 2026", "firstYear": first, "lastYear": first + years - 1, "window": 5, "regions": [{"name": str(n), "color": str(c)} for n, c in zip(D["regions"], D["colors"])],
             "denomAll": D["denom_all"].tolist(), "denomFlag": D["denom_flag"].tolist(), "regionAll": D["reg_all"].tolist(), "regionFlag": D["reg_flag"].tolist(), "institutions": rows}

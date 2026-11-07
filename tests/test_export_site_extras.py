@@ -246,7 +246,7 @@ def by_name(data, name):
 def test_bubbles_match_figure_1(bubbles):
     """The first and last windows are the paper's panels A and B."""
     stanford, tsinghua = by_name(bubbles, "Stanford University"), by_name(bubbles, "Tsinghua University")
-    assert (window(stanford[2], 0), window(stanford[3], 0), window(stanford[2], 20), window(stanford[3], 20)) == (8939, 258, 17825, 467)
+    assert (window(stanford[2], 0), window(stanford[3], 0), window(stanford[2], 20), window(stanford[3], 20)) == (8941, 258, 17890, 467)
     assert (window(tsinghua[3], 0), window(tsinghua[3], 20)) == (5, 123)
 
 
@@ -260,10 +260,13 @@ def test_bubbles_regions_match_figure_1(bubbles):
 
 def test_bubbles_merge_name_variants(bubbles):
     harvard = by_name(bubbles, "Harvard University")
-    assert (window(harvard[3], 0), window(harvard[3], 20)) == (906, 1047)
+    assert (window(harvard[3], 0), window(harvard[3], 20)) == (915, 1065)
     names = {i[0] for i in bubbles["institutions"]}
     assert "Harvard Medical School" not in names and "Massachusetts General Hospital" not in names and "Peking University Third Hospital" not in names
-    assert {"Memorial Sloan Kettering Cancer Center", "Mayo Clinic", "Cleveland Clinic"} <= names
+    assert {"Memorial Sloan Kettering Cancer Center", "Mayo Clinic", "Cleveland Clinic", "Cleveland Clinic Abu Dhabi"} <= names
+    assert [n for n in names if n.startswith("Wake Forest")] == ["Wake Forest University"]
+    assert [n for n in names if n.startswith("Mayo ")] == ["Mayo Clinic"]
+    assert "McGill University" in names and "University of Virginia" in names and "University of Virginia Medical School" not in names
 
 
 def test_bubbles_names_are_unique(bubbles):
@@ -276,4 +279,4 @@ def test_bubbles_shape(bubbles):
     n = bubbles["lastYear"] - bubbles["firstYear"] + 1
     assert n == 25 and bubbles["window"] == 5 and len(bubbles["denomAll"]) == n
     assert all(len(i[2]) == n and len(i[3]) in (0, n) for i in bubbles["institutions"])
-    assert len({i[0] for i in bubbles["institutions"]}) > 7000
+    assert len({i[0] for i in bubbles["institutions"]}) > 6900
