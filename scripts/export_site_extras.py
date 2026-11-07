@@ -353,11 +353,17 @@ def publishing_charts():
     ]
 
 
+def plain_name(key):
+    """A readable name from a lowercase key: 'university of oxford' -> 'University of Oxford'."""
+    small = {"of", "and", "at", "the", "in", "for", "de", "di"}
+    return " ".join(w if i and w in small else w.capitalize() for i, w in enumerate(key.replace(" s ", "'s ").split()))
+
+
 def people_charts():
-    I = read_csv("v10/data/f11a_institutions.csv")
-    R = read_csv("v10/data/f11b_regions.csv")
-    C = read_csv("v10/data/f11c_concentration.csv")
-    D = read_csv("v10/data/f11d_over_representation.csv")
+    I = read_csv("v11/data/f11a_institutions.csv")
+    R = read_csv("v11/data/f11b_regions.csv")
+    C = read_csv("v11/data/f11c_concentration.csv")
+    D = read_csv("v11/data/f11d_over_representation.csv")
     A = read_csv("data/fig4a_author_count_buckets.csv")
     B = read_csv("data/fig4b_papers_100plus_authors_by_year.csv")
     journals = ["nature", "science", "cell", "nejm", "lancet"]
@@ -368,9 +374,9 @@ def people_charts():
         {"id": "institution_moves", "type": "institutions", "title": "Where flagship papers came from, 2001\u20132025",
          "note": "Each dot is an institution with at least 200 first-author papers in 2001\u201325, and moves through five-year windows, one year apart. Across, its share of all PubMed papers; up, its share of papers in Nature, Science, Cell, NEJM and Lancet. Dot size is its flagship papers. Each paper counts once, for its first author's first-named institution, because PubMed kept only that affiliation until about 2014. Name variants are merged by rule, and schools and hospitals count with their university: a hospital joins a university when its name carries the university's name, or when at least 10% of its papers list that university and no other comes close. Independent and shared hospitals keep their own dots. Search for an institution to follow it, or click a dot.",
          "defaults": ["Stanford University", "Chinese Academy of Sciences", "Tsinghua University"]},
-        {"id": "institutions", "type": "scatter", "title": "Institution links in all journals and in five flagships", "note": "Each dot is an institution with at least 1,000 PubMed papers in 2021\u201325 and a paper in Nature, Science, Cell, NEJM or Lancet. A link is one institution on one paper. Log scales.",
+        {"id": "institutions", "type": "scatter", "title": "Institution links in all journals and in five flagships", "note": "Each dot is an institution with at least 1,000 PubMed papers in 2021\u201325 and a paper in Nature, Science, Cell, NEJM or Lancet. A link is one institution on one paper, with schools and hospitals counted with their university as in the chart above. Log scales.",
          "x": "Share of links, all PubMed journals (%)", "y": "Share of links, five flagships (%)", "log": True, "diagonal": True,
-         "points": [{"x": round(100 * num(r, "share_all"), 5), "y": round(100 * num(r, "share_flagship"), 5), "label": r["institution"].title(), "color": colors[r["region"]]} for r in with_flagship], "groups": colors},
+         "points": [{"x": round(100 * num(r, "share_all"), 5), "y": round(100 * num(r, "share_flagship"), 5), "label": plain_name(r["institution"]), "color": colors[r["region"]]} for r in with_flagship], "groups": colors},
         {"id": "institution_regions", "type": "hbar", "title": "Share of links by region", "note": "Links to large institutions, 2021\u201325.", "labels": [r["region"] for r in R],
          "series": [s("All journals", [round(100 * num(r, "all_journals"), 1) for r in R], INK)] + [s(n, [round(100 * num(r, j), 1) for r in R], c) for n, j, c in zip(names, journals, [BLUE, SKY, GREEN, ORANGE, VERMILION])], "x": "Share of links (%)"},
         {"id": "concentration", "type": "hbar", "title": "Share of links from each journal's top institutions", "note": "Each journal's top 10, 50 and 100 institutions, against a random draw of the same size from all journals.", "labels": [r["journal"] for r in C],
