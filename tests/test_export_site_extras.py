@@ -246,7 +246,7 @@ def by_name(data, name):
 def test_bubbles_match_figure_1(bubbles):
     """The first and last windows are the paper's panels A and B."""
     stanford, tsinghua = by_name(bubbles, "Stanford University"), by_name(bubbles, "Tsinghua University")
-    assert (window(stanford[2], 0), window(stanford[3], 0), window(stanford[2], 20), window(stanford[3], 20)) == (8473, 253, 16678, 456)
+    assert (window(stanford[2], 0), window(stanford[3], 0), window(stanford[2], 20), window(stanford[3], 20)) == (8521, 254, 17014, 465)
     assert (window(tsinghua[3], 0), window(tsinghua[3], 20)) == (5, 123)
 
 
@@ -256,6 +256,13 @@ def test_bubbles_regions_match_figure_1(bubbles):
     share = lambda tab, k, start: sum(tab[k][start:start + 5]) / sum(sum(row[start:start + 5]) for row in tab)  # noqa: E731
     assert round(share(bubbles["regionAll"], china, 20), 3) == 0.245 and round(share(bubbles["regionFlag"], usa, 0), 3) == 0.548
     assert {r["name"]: r["color"] for r in bubbles["regions"]}["Canada"] == "#CC79A7"
+
+
+def test_bubbles_merge_name_variants(bubbles):
+    harvard = by_name(bubbles, "Harvard University")
+    assert (window(harvard[3], 0), window(harvard[3], 20)) == (428, 427)
+    names = {i[0] for i in bubbles["institutions"]}
+    assert "Harvard Medical School" not in names and "Harvard University Medical School" not in names and "Massachusetts General Hospital" in names
 
 
 def test_bubbles_shape(bubbles):

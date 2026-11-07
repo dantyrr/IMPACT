@@ -354,10 +354,10 @@ def publishing_charts():
 
 
 def people_charts():
-    I = read_csv("v2/data/f11a_institutions.csv")
-    R = read_csv("v2/data/f11b_regions.csv")
-    C = read_csv("v2/data/f11c_concentration.csv")
-    D = read_csv("v2/data/f11d_over_representation.csv")
+    I = read_csv("v10/data/f11a_institutions.csv")
+    R = read_csv("v10/data/f11b_regions.csv")
+    C = read_csv("v10/data/f11c_concentration.csv")
+    D = read_csv("v10/data/f11d_over_representation.csv")
     A = read_csv("data/fig4a_author_count_buckets.csv")
     B = read_csv("data/fig4b_papers_100plus_authors_by_year.csv")
     journals = ["nature", "science", "cell", "nejm", "lancet"]
@@ -366,7 +366,7 @@ def people_charts():
     with_flagship = [r for r in I if int(r["flagship_papers"]) > 0]
     return [
         {"id": "institution_moves", "type": "institutions", "title": "Where flagship papers came from, 2001\u20132025",
-         "note": "Each dot is an institution with at least 200 first-author papers in 2001\u201325, and moves through five-year windows, one year apart. Across, its share of all PubMed papers; up, its share of papers in Nature, Science, Cell, NEJM and Lancet. Dot size is its flagship papers. Each paper counts once, for its first author's first-named institution, because PubMed kept only that affiliation until about 2014. Names are as written in PubMed, so one institution can appear under more than one name. Search for an institution to follow it, or click a dot.",
+         "note": "Each dot is an institution with at least 200 first-author papers in 2001\u201325, and moves through five-year windows, one year apart. Across, its share of all PubMed papers; up, its share of papers in Nature, Science, Cell, NEJM and Lancet. Dot size is its flagship papers. Each paper counts once, for its first author's first-named institution, because PubMed kept only that affiliation until about 2014. Name variants are merged by rule: schools and medical centers carrying a university's name count with that university, joint names go to the first-named institution, and hospitals with their own names stay separate. Search for an institution to follow it, or click a dot.",
          "defaults": ["Stanford University", "Chinese Academy of Sciences", "Tsinghua University"]},
         {"id": "institutions", "type": "scatter", "title": "Institution links in all journals and in five flagships", "note": "Each dot is an institution with at least 1,000 PubMed papers in 2021\u201325 and a paper in Nature, Science, Cell, NEJM or Lancet. A link is one institution on one paper. Log scales.",
          "x": "Share of links, all PubMed journals (%)", "y": "Share of links, five flagships (%)", "log": True, "diagonal": True,
