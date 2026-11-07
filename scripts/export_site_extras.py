@@ -443,7 +443,13 @@ def export_bubbles(out_dir=OUT):
     D = np.load(os.path.join(ANALYSIS, "institution_years.npz"))
     first = int(D["first_year"])
     years = D["all"].shape[1]
-    rows = [[str(n).removeprefix("The "), int(r), a.tolist(), f.tolist() if f.any() else []] for n, r, a, f in zip(D["names"], D["region"], D["all"], D["flag"])]
+    names = [str(n).removeprefix("The ") for n in D["names"]]
+    seen = collections.Counter(names)
+    # A raw name can be shared, as when campuses are all written "University of California": those rows use their full key.
+    small = {"of", "and", "at", "the", "in", "for"}
+    full = lambda key: " ".join(w if i and w in small else w.capitalize() for i, w in enumerate(str(key).split()))  # noqa: E731
+    names = [full(k) if seen[n] > 1 else n for n, k in zip(names, D["keys"])]
+    rows = [[n, int(r), a.tolist(), f.tolist() if f.any() else []] for n, r, a, f in zip(names, D["region"], D["all"], D["flag"])]
     data = {"asOf": "Nov 2026", "firstYear": first, "lastYear": first + years - 1, "window": 5, "regions": [{"name": str(n), "color": str(c)} for n, c in zip(D["regions"], D["colors"])],
             "denomAll": D["denom_all"].tolist(), "denomFlag": D["denom_flag"].tolist(), "regionAll": D["reg_all"].tolist(), "regionFlag": D["reg_flag"].tolist(), "institutions": rows}
     write_json(out_dir, "institution_bubbles.json", data)

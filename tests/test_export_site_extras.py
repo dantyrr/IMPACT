@@ -265,6 +265,12 @@ def test_bubbles_merge_name_variants(bubbles):
     assert "Harvard Medical School" not in names and "Harvard University Medical School" not in names and "Massachusetts General Hospital" in names
 
 
+def test_bubbles_names_are_unique(bubbles):
+    names = [i[0] for i in bubbles["institutions"]]
+    assert len(names) == len(set(names))
+    assert "University of California Davis" in names and "University of California" not in names
+
+
 def test_bubbles_shape(bubbles):
     n = bubbles["lastYear"] - bubbles["firstYear"] + 1
     assert n == 25 and bubbles["window"] == 5 and len(bubbles["denomAll"]) == n
