@@ -4,8 +4,8 @@
  * Drawn on one canvas, because Chart.js can't move this many dots smoothly.
  */
 class InstitutionBubbles {
-    static X = [4e-6, 1.3e-2];
-    static Y = [3.6e-5, 3.2e-2];
+    static X = [4e-6, 2e-2];
+    static Y = [3.6e-5, 9e-2];
     static STEP_MS = 800;
     static MAX_PICKS = 6;
     static INK = '#222222';
@@ -272,7 +272,7 @@ class InstitutionBubbles {
         c.strokeStyle = '#BBBBBB';
         c.beginPath(); c.moveTo(left, top); c.lineTo(left, this.strip + 6); c.lineTo(right, this.strip + 6); c.stroke();
         // Equal share: a dashed line where the two shares match.
-        const lo = 3.6e-5, hi = 1.3e-2;
+        const lo = 3.6e-5, hi = 2e-2;
         c.strokeStyle = INK;
         c.setLineDash([5, 4]);
         c.beginPath(); c.moveTo(this._sx(lo), this._sy(lo)); c.lineTo(this._sx(hi), this._sy(hi)); c.stroke();
