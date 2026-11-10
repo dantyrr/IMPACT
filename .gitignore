@@ -57,3 +57,8 @@ data/last_update_status.json
 
 # Local analysis outputs (large)
 data/analysis/
+
+# Paper figures and working files stay local; only the analysis code is published
+10-31-26/*
+!10-31-26/scripts/
+10-31-26/scripts/.pytest_cache/

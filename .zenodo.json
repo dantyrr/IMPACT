@@ -1,0 +1,13 @@
+{
+  "title": "IMPACT: code for \"Quantifying Biomedical Publishing and Citation Metrics\"",
+  "upload_type": "software",
+  "description": "<p>IMPACT computes monthly rolling citation rates for every PubMed-indexed journal from public data (PubMed and the NIH Open Citation Collection). This archive holds the pipeline, the website and the analysis code in <code>10-31-26/scripts/</code> that builds every figure and Data S1 of the paper \"Quantifying Biomedical Publishing and Citation Metrics\". Live site: https://dantyrr.github.io/IMPACT</p>",
+  "creators": [
+    {"name": "Tyrrell, Daniel J.", "affiliation": "University of Alabama at Birmingham"}
+  ],
+  "license": "MIT",
+  "keywords": ["bibliometrics", "journal impact factor", "citation analysis", "PubMed", "scientific publishing"],
+  "related_identifiers": [
+    {"identifier": "https://dantyrr.github.io/IMPACT", "relation": "isDocumentedBy", "resource_type": "other"}
+  ]
+}

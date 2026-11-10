@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "IMPACT: code for \"Quantifying Biomedical Publishing and Citation Metrics\""
+type: software
+authors:
+  - family-names: Tyrrell
+    given-names: Daniel J.
+    affiliation: University of Alabama at Birmingham
+license: MIT
+repository-code: "https://github.com/dantyrr/IMPACT"
+url: "https://dantyrr.github.io/IMPACT"
+keywords:
+  - bibliometrics
+  - journal impact factor
+  - citation analysis
+  - PubMed
