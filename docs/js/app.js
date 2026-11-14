@@ -133,6 +133,16 @@ class IMPACTApp {
         if (section) section.classList.add('active');
         if (link) link.classList.add('active');
         if (sectionId === 'landscape') this.landscape.show();
+        this._trackEvent(`section/${sectionId}`, `Section: ${sectionId}`);
+    }
+
+    // Anonymous usage counts (GoatCounter, no cookies). Section switches and journal
+    // views do not change the URL, so they are sent as events. A no-op when the
+    // counter script is blocked or not loaded (e.g. on localhost).
+    _trackEvent(path, title) {
+        try {
+            window.goatcounter?.count?.({ path, title, event: true });
+        } catch (e) { /* analytics must never break the page */ }
     }
 
     // ---- Journal List ----
@@ -946,6 +956,7 @@ class IMPACTApp {
             }
 
             this.currentJournalSlug = slug;
+            this._trackEvent(`journal/${slug}`, `Journal: ${(this.journals.find(j => j.slug === slug) || {}).name || slug}`);
 
             // Hide browse + comparison panel, show detail
             journalsMain.style.display = 'none';
