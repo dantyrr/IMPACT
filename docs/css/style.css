@@ -1415,14 +1415,28 @@ tr.row-excluded td {
     white-space: normal;
     text-align: left;
     pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.2s;
+    /* Not laid out until asked for: a hidden note near the right edge would
+       still make the page scroll sideways. */
+    display: none;
     z-index: 500;
     line-height: 1.45;
 }
 
 .metric-info:hover::after {
-    opacity: 1;
+    display: block;
+}
+
+/* On a phone the note sits along the bottom of the screen. Beside its icon it
+   would run off the side and make the whole page wider than the screen. */
+@media (max-width: 768px) {
+    .metric-info::after {
+        position: fixed;
+        left: 1rem;
+        right: 1rem;
+        bottom: 1rem;
+        width: auto;
+        transform: none;
+    }
 }
 
 /* ---- Article type filter pills ---- */

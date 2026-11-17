@@ -41,6 +41,17 @@ const UIHelpers = {
     },
 
     /**
+     * Put a table in a box that scrolls sideways, so a wide table
+     * does not make the whole page wider than a phone screen.
+     */
+    scrollBox(table) {
+        const box = document.createElement('div');
+        box.className = 'table-scroll';
+        box.appendChild(table);
+        return box;
+    },
+
+    /**
      * Create an HTML table from data rows and column definitions.
      * columns: [{key, label, format?}]
      */

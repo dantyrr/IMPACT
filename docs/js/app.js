@@ -1775,7 +1775,7 @@ class IMPACTApp {
         ];
 
         container.innerHTML = '';
-        container.appendChild(UIHelpers.createTable(rows, columns));
+        container.appendChild(UIHelpers.scrollBox(UIHelpers.createTable(rows, columns)));
     }
 
     _downloadCompareChart(format, chartId = 'jc-chart', filename = 'journal-comparison') {
@@ -4110,7 +4110,7 @@ class IMPACTApp {
             last_author: p.found && p.last_author ? `${p.last_author.name}${p.last_author.affiliation ? ' — ' + p.last_author.affiliation : ''}` : '—',
         }));
 
-        container.appendChild(UIHelpers.createTable(rows, [
+        container.appendChild(UIHelpers.scrollBox(UIHelpers.createTable(rows, [
             { key: 'pmid', label: 'PMID' },
             { key: 'title', label: 'Title' },
             { key: 'journal', label: 'Journal' },
@@ -4122,7 +4122,7 @@ class IMPACTApp {
             { key: 'benchmark_month', label: 'Benchmark month' },
             { key: 'first_author', label: 'First Author' },
             { key: 'last_author', label: 'Last Author' },
-        ]));
+        ])));
 
         const note = document.createElement('p');
         note.className = 'data-note';
@@ -4151,7 +4151,7 @@ class IMPACTApp {
             ]
         );
 
-        container.appendChild(table);
+        container.appendChild(UIHelpers.scrollBox(table));
     }
 
     // ---- Timestamp ----

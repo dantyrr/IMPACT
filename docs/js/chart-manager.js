@@ -23,6 +23,60 @@ const DOC_CATEGORY_DASHES = {
     erratum: [1, 4], other: [12, 3], commentary: [3, 6],
 };
 
+// Keeps the plot readable on a narrow screen. A chart is normally twice as wide
+// as it is tall, which on a phone leaves no height for the plot once the title,
+// the legend (wrapped onto several rows) and the slanted month labels are drawn.
+// So a chart grows taller until its plot is at least MIN_PLOT_HEIGHT; on a wide
+// screen nothing changes. A chart in a box of fixed height gets the extra legend
+// rows added to its box instead.
+const MIN_PLOT_HEIGHT = 170;
+const plotFit = {
+    id: 'plotFit',
+    _base: new WeakMap(),      // chart -> its own shape (or its box height) before any growing
+    _last: new Map(),          // canvas id -> { width, aspect }, so a redrawn chart starts at the right height
+    _fixedBox(chart) {
+        const box = chart.canvas && chart.canvas.parentNode;
+        const px = box && parseFloat(box.style.height);
+        return chart.options.maintainAspectRatio === false ? { box, px } : null;
+    },
+    beforeInit(chart) {
+        if (this._fixedBox(chart)) return;
+        this._base.set(chart, chart.options.aspectRatio || 2);
+        const last = this._last.get(chart.canvas.id);
+        const box = chart.canvas.parentNode;
+        if (last && box && last.width === box.clientWidth) chart.options.aspectRatio = last.aspect;
+    },
+    afterLayout(chart) {
+        if (!chart.width || !chart.chartArea) return;
+        const fixed = this._fixedBox(chart);
+        if (fixed) {
+            const legend = chart.legend;
+            const rows = legend && legend.options.display && legend.lineWidths ? legend.lineWidths.length : 0;
+            if (!fixed.px || !this._base.has(chart) && rows < 2) return;
+            if (!this._base.has(chart)) this._base.set(chart, fixed.px);
+            const wanted = Math.round(this._base.get(chart) + (rows > 1 ? legend.height * (rows - 1) / rows : 0));
+            if (Math.abs(wanted - fixed.px) >= 2) {
+                fixed.box.style.height = `${wanted}px`;
+                requestAnimationFrame(() => { if (chart.canvas && chart.attached) chart.resize(); });
+            }
+            return;
+        }
+        if (!this._base.has(chart)) return;
+        const around = chart.height - chart.chartArea.height;
+        const wanted = Math.max(chart.width / this._base.get(chart), around + MIN_PLOT_HEIGHT);
+        if (Math.abs(wanted - chart.height) < 2) return;
+        requestAnimationFrame(() => {
+            if (!chart.canvas || !chart.attached || !chart.width) return;
+            const aspect = chart.width / wanted;
+            chart.options.aspectRatio = aspect;
+            const box = chart.canvas.parentNode;
+            if (chart.canvas.id && box) this._last.set(chart.canvas.id, { width: box.clientWidth, aspect });
+            chart.resize();
+        });
+    },
+};
+Chart.register(plotFit);
+
 class ChartManager {
     constructor() {
         this.charts = {};
@@ -809,7 +863,7 @@ class ChartManager {
                         text: [
                             hasProvisional ? 'Shaded months are provisional: citations to them are still arriving, so they read low.' : '',
                             this.markers.jcr ? 'Dashed lines mark each June, when Clarivate releases the JCR Impact Factor for the previous year.' : '',
-                        ].filter(Boolean),
+                        ].filter(Boolean).flatMap(line => this._wrapForChart(canvasId, line, 11)),
                         font: { size: 11 },
                     },
                     legend: { position: 'bottom' },
@@ -1138,6 +1192,27 @@ class ChartManager {
         const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color || '');
         if (!m) return color;
         return `rgba(${parseInt(m[1], 16)}, ${parseInt(m[2], 16)}, ${parseInt(m[3], 16)}, ${alpha})`;
+    }
+
+    /**
+     * Break a note into lines that fit across the chart. Chart.js draws a title
+     * on one line, which on a phone runs off both sides.
+     */
+    _wrapForChart(canvasId, text, fontSize) {
+        const canvas = document.getElementById(canvasId);
+        const room = (canvas && canvas.parentNode ? canvas.parentNode.clientWidth : 0) - 48;
+        if (room <= 0) return [text];
+        const pen = document.createElement('canvas').getContext('2d');
+        pen.font = `${fontSize}px ${Chart.defaults.font.family}`;
+        const lines = [];
+        let line = '';
+        for (const word of text.split(' ')) {
+            const longer = line ? `${line} ${word}` : word;
+            if (line && pen.measureText(longer).width > room) { lines.push(line); line = word; }
+            else line = longer;
+        }
+        if (line) lines.push(line);
+        return lines;
     }
 
     _destroy(canvasId) {
