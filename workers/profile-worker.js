@@ -6,6 +6,9 @@
  * Routes:
  *   PUT /profiles/:slug  — Create or update a profile
  *   GET /profiles/:slug  — Read a profile (fallback; R2 public URL is primary)
+ *   GET /ncbi-bibliography?url=… — Fetch a public MyNCBI bibliography page.
+ *       NCBI sends no CORS headers, so the site can't read the page itself.
+ *       Only MyNCBI bibliography pages are fetched; this is not an open proxy.
  *
  * Environment bindings (set in wrangler.toml):
  *   BUCKET — R2 bucket binding
@@ -28,6 +31,11 @@ export default {
         }
 
         const url = new URL(request.url);
+
+        if (url.pathname === '/ncbi-bibliography' && request.method === 'GET') {
+            return handleBibliography(url.searchParams.get('url'));
+        }
+
         const match = url.pathname.match(/^\/profiles\/([^/]+)$/);
 
         if (!match) {
@@ -117,6 +125,49 @@ async function handleGet(env, slug) {
         status: 200,
         headers: {
             'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=3600',
+            ...CORS_HEADERS,
+        },
+    });
+}
+
+// Accepts www.ncbi.nlm.nih.gov/myncbi/<name>/bibliography/public/ (and the older
+// /sites/myncbi/ form), with at most a page number. Returns the cleaned URL or null.
+function bibliographyUrl(raw) {
+    let target;
+    try {
+        target = new URL(raw);
+    } catch {
+        return null;
+    }
+    if (!['https:', 'http:'].includes(target.protocol)) return null;
+    if (!['www.ncbi.nlm.nih.gov', 'ncbi.nlm.nih.gov'].includes(target.hostname)) return null;
+    if (!/^\/(sites\/)?myncbi\/[^/]+\/(bibliography|collections)(\/.*)?$/.test(target.pathname)) return null;
+    const page = target.searchParams.get('page');
+    const clean = new URL(`https://www.ncbi.nlm.nih.gov${target.pathname}`);
+    if (page && /^\d{1,3}$/.test(page)) clean.searchParams.set('page', page);
+    return clean;
+}
+
+async function handleBibliography(raw) {
+    const target = bibliographyUrl(raw);
+    if (!target) {
+        return json({ error: 'Only public MyNCBI bibliography URLs are accepted.' }, 400);
+    }
+    let resp;
+    try {
+        resp = await fetch(target.toString(), {
+            headers: { 'User-Agent': 'IMPACT bibliography import (Cloudflare Worker)' },
+            cf: { cacheTtl: 3600, cacheEverything: true },
+        });
+    } catch (e) {
+        return json({ error: `NCBI could not be reached: ${e.message}` }, 502);
+    }
+    const body = await resp.text();
+    return new Response(body, {
+        status: resp.status,
+        headers: {
+            'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'public, max-age=3600',
             ...CORS_HEADERS,
         },

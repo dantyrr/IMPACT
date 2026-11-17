@@ -3204,9 +3204,17 @@ class IMPACTApp {
                 return body;
             };
 
-            const fetchPage = (pageNum) => {
+            // NCBI doesn't let other sites read its pages, so the page is fetched by the
+            // site's own Worker. The free public proxies are only a fallback: they are
+            // often down.
+            const fetchPage = async (pageNum) => {
                 const pageUrl = pageNum === 1 ? val : `${baseUrl}?page=${pageNum}`;
                 const enc = encodeURIComponent(pageUrl);
+                if (dataLoader.workerUrl) {
+                    try {
+                        return await fetchProxy(`${dataLoader.workerUrl}/ncbi-bibliography?url=${enc}`, false);
+                    } catch (e) { /* fall back to the public proxies */ }
+                }
                 return Promise.any([
                     fetchProxy(`https://corsproxy.io/?url=${enc}`, false),
                     fetchProxy(`https://api.allorigins.win/get?url=${enc}`, true),
@@ -3218,7 +3226,7 @@ class IMPACTApp {
                 [...html.matchAll(/\/pubmed\/(\d+)/g)].map(m => m[1]);
 
             const page1Html = await fetchPage(1).catch(() => {
-                throw new Error('All CORS proxies failed — try again in a moment.');
+                throw new Error('Could not fetch the bibliography from NCBI. Check that the URL is your public MyNCBI bibliography, then try again in a moment.');
             });
 
             const page1Pmids = extractPmids(page1Html);
