@@ -693,7 +693,7 @@
     <!-- ============ INFLUENCE ============ -->
     <section id="influence" class="section">
         <h2>PMID Influence</h2>
-        <p class="section-desc">Select a journal and enter one or more PMIDs (comma-separated) to see how those papers inflate the journal's rolling citation rate. Choose a window (12-month, 24-month, or 5-year). View as a <strong>combined</strong> counterfactual (all PMIDs removed together) or as <strong>individual</strong> dashed lines showing each paper's standalone contribution.</p>
+        <p class="section-desc">Select a journal and enter one or more PMIDs (comma-separated) to see how much those papers add to the journal's rolling citation rate. Choose a window (12-month, 24-month, or 5-year). View as a <strong>combined</strong> counterfactual (all PMIDs removed together) or as <strong>individual</strong> dashed lines showing each paper's standalone contribution.</p>
 
         <div class="influence-ctrl-row">
             <div class="influence-picker-wrap">
@@ -812,11 +812,11 @@
                 Factor.
             </p>
             <p>
-                Key questions IMPACT helps investigate: Which journals boost their metrics with
-                highly-cited review articles? How much does a single landmark paper or clinical
-                guideline inflate a journal's citation rate? How do author h-indexes vary by
-                article type, and are they padded by self-citations or review series? These
-                questions matter for how science is evaluated, funded, and incentivized.
+                Questions IMPACT can help answer: How much of a journal's citation rate comes
+                from review articles, case reports and guidelines rather than research articles?
+                How much does a single highly cited paper change a journal's rate? How do author
+                h-indexes differ by article type? These measures are widely used in how science
+                is evaluated and funded, so it helps to see how they are built.
             </p>
 
             <h3>How is the Rolling 24-Month Citation Rate Calculated?</h3>
@@ -850,7 +850,12 @@
             </p>
 
             <h3>Tracked Journals</h3>
-            <div id="about-journal-list"></div>
+            <p>
+                IMPACT covers every journal currently indexed in PubMed. The full list, with
+                abbreviations and ISSNs, is in
+                <a href="https://github.com/dantyrr/IMPACT/blob/main/JOURNALS.csv" target="_blank" rel="noopener">JOURNALS.csv</a>
+                on GitHub; any of them can be looked up on the Journals page.
+            </p>
 
             <h3>Accessibility &amp; Color</h3>
             <p>
@@ -1052,7 +1057,7 @@
 <script src="js/institution-bubbles.js?v=7"></script>
 <script src="js/landscape-tab.js?v=9"></script>
 <script src="js/geo-tab.js?v=5"></script>
-<script src="js/app.js?v=56"></script>
+<script src="js/app.js?v=57"></script>
 <!-- Anonymous visit counts: GoatCounter, no cookies, no personal data -->
 <script data-goatcounter="https://dtyrrell.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 

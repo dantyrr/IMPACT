@@ -32,6 +32,7 @@ Data sources: PubMed Annual Baseline + update files (~40M records) + iCite Open 
 - `python scripts/upload_to_r2.py` — Sync JSON to Cloudflare R2
 - `python scripts/mark_noncounting_citations.py [--dry-run]` — Mark stored citations made by errata/retraction notices/EoCs (backfill; inserts mark them already)
 - `python scripts/export_site_extras.py [retractions|measures|citers|series|landscape|bubbles]` — Reformat `data/analysis/` and paper-figure files into `docs/data/` (retractions/, citers/, series/, journal_measures.json, landscape.json, institution_bubbles.json); no pipeline run
+- `python scripts/export_journal_list.py` — Rewrite `JOURNALS.csv` (every tracked journal; the About page links to it) from `docs/data/index.json`
 - `python scripts/validate_exports.py [--since YYYY-MM-DD]` — Verify JSON export completeness and v2 shape (fails files older than --since, default today)
 - `sqlite3 data/impact.db` — Query the main database directly
 

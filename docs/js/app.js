@@ -82,7 +82,6 @@ class IMPACTApp {
             this.setupAuthorSearch();
             this.setupGeography();
             this.setupInfluence();
-            this.setupAboutJournalList();
             this.updateTimestamp(index.generated);
             this._handleDeepLink();
         } catch (error) {
@@ -4136,30 +4135,6 @@ class IMPACTApp {
         note.className = 'data-note';
         note.textContent = '24-mo Citations: total citations received within exactly 24 months of publication (PubMed dates). Cit/yr (2-yr): 24-mo citations ÷ 2 — the paper\'s annualized citation rate, directly comparable to the Journal Rate benchmark. Journal Rate (benchmark): the journal\'s rolling citation rate (citations per paper per year) at ~24 months after publication — computed the same way as a traditional 2-yr JIF.';
         container.appendChild(note);
-    }
-
-    // ---- About Section — Journal List ----
-
-    setupAboutJournalList() {
-        const container = document.getElementById('about-journal-list');
-        if (!container || this.journals.length === 0) return;
-
-        const table = UIHelpers.createTable(
-            this.journals.map(j => ({
-                name: j.name,
-                abbr: j.abbreviation,
-                issn: j.issn,
-                latest_if: UIHelpers.headlineRate(j),
-            })),
-            [
-                { key: 'name', label: 'Journal' },
-                { key: 'abbr', label: 'Abbreviation' },
-                { key: 'issn', label: 'ISSN' },
-                { key: 'latest_if', label: 'Citation Rate', format: UIHelpers.formatIF },
-            ]
-        );
-
-        container.appendChild(UIHelpers.scrollBox(table));
     }
 
     // ---- Timestamp ----

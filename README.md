@@ -2,32 +2,32 @@
 
 **Independent Metrics for Publication Analysis and Citation Tracking**
 
-An open-source system for computing **monthly rolling citation rates** for every PubMed-indexed journal — built entirely from freely available public data. Designed to study publication bias, impact factor inflation, and citation patterns in academic publishing.
+An open-source system for computing **monthly rolling citation rates** for every PubMed-indexed journal — built entirely from freely available public data. It is used to quantify biomedical publishing and citation metrics: how they are built, what drives them, and how they change over time.
 
 **Live site:** https://dantyrr.github.io/IMPACT
 
 ---
 
-## The Problem
+## Background
 
-The way science is evaluated — through journal impact factors, h-indexes, and citation counts — shapes what gets funded, published, and promoted. These metrics have well-known flaws:
+Journal impact factors, h-indexes and citation counts are widely used in how science is evaluated, funded and promoted. Several of their properties are worth measuring directly:
 
-- **Calendar bias** — The JIF is calculated annually using only the first two years after publication. A paper published in January gets a full 24 months to accumulate citations, while a paper published in November gets only 14 months. This structural flaw penalizes late-year publications and distorts the metric.
-- **Gaming** — Journals can inflate their JIF through editorial practices: soliciting review articles (which are cited far more than original research), publishing consensus statements, or encouraging self-citation.
-- **Field and type skew** — Citation rates vary enormously by field (a cardiology paper and a mycology paper are not comparable), by geographic region, and by article type (reviews vs. original research vs. editorials). The JIF collapses all of this into a single number.
-- **Opacity** — JIFs are published once a year by Clarivate, behind a paywall. Researchers, tenure committees, and funding agencies rely on these numbers with no way to audit or reproduce them.
+- **Calendar timing** — The JIF is calculated once a year over a two-year window, so a paper published in January has more time to be cited within the window than one published in November.
+- **Article type** — Reviews, guidelines and consensus statements are typically cited more than research articles, so a journal's mix of article types affects its JIF.
+- **Field and type differences** — Citation rates differ widely by field, by region and by article type (reviews vs. original research vs. editorials). The JIF summarizes all of this in a single number.
+- **Reproducibility** — JIFs are published once a year by Clarivate from proprietary data, so they cannot be independently recalculated.
 
-IMPACT provides open tools to study how these metrics can be gamed or inflated:
+IMPACT provides open data and tools to measure these effects:
 
-- **Impact factor inflation** — Which journals boost their JIF with highly-cited reviews or clinical guidelines? How much does a single landmark paper raise a journal's citation rate?
-- **H-index padding** — How do h-indexes vary when you filter by article type (reviews vs. original research)? Are self-citations or invited review series inflating an author's index?
-- **Publication bias** — Which journals, institutions, or countries dominate the literature in a given field?
+- **Journal citation rates** — How much of a journal's rate comes from reviews, case reports or guidelines? How much does a single highly cited paper change it?
+- **Author metrics** — How do h-indexes differ when filtered by article type (reviews vs. original research)?
+- **Who publishes where** — Which institutions and countries contribute to a journal or field, and how has that changed?
 
-We are actively building out the site to illustrate all of these issues. The goal is to promote transparency, improve how metrics are used, and give researchers free access to the data behind the numbers.
+The site is still being extended. The goal is transparent, reproducible measures, with free access to the data behind them.
 
 ## What IMPACT Does
 
-IMPACT computes a rolling monthly citation rate — a monthly analogue of the JIF, defined in [METHODOLOGY.md](METHODOLOGY.md) — from public data, for all 8,000+ PubMed-indexed journals going back to 2005. The results are browsable on a free website with interactive charts, and all code and data are open source.
+IMPACT computes a rolling monthly citation rate — a monthly analogue of the JIF, defined in [METHODOLOGY.md](METHODOLOGY.md) — from public data, for all 8,000+ PubMed-indexed journals going back to 2005 (the full list is in [JOURNALS.csv](JOURNALS.csv)). The results are browsable on a free website with interactive charts, and all code and data are open source.
 
 ---
 
