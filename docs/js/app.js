@@ -2170,7 +2170,12 @@ class IMPACTApp {
         const loadingEl = document.getElementById(loadingId);
         if (loadingEl) { loadingEl.style.display = ''; loadingEl.textContent = 'Loading\u2026'; }
 
-        const allCitedBy = [...new Set(active.flatMap(p => (p.cited_by || []).map(String)))];
+        // Counted as Google Scholar does: a paper that cites three of the author's papers
+        // adds three citations to its year, so the bars add up to the total citations.
+        const timesCiting = {};
+        active.forEach(p => new Set((p.cited_by || []).map(String))
+            .forEach(c => { timesCiting[c] = (timesCiting[c] || 0) + 1; }));
+        const allCitedBy = Object.keys(timesCiting);
 
         if (allCitedBy.length === 0) {
             if (this[vKey] !== version) return;
@@ -2198,7 +2203,9 @@ class IMPACTApp {
                     return Array.isArray(json) ? json : (json.data || []);
                 } catch { return []; }
             }));
-            results.flat().forEach(p => { if (p.year) byYear[p.year] = (byYear[p.year] || 0) + 1; });
+            results.flat().forEach(p => {
+                if (p.year) byYear[p.year] = (byYear[p.year] || 0) + (timesCiting[String(p.pmid)] || 1);
+            });
         }
 
         if (this[vKey] !== version) return;
