@@ -2997,6 +2997,13 @@ class IMPACTApp {
 
         document.getElementById('author-save-profile-btn').addEventListener('click', () => this._saveProfile());
 
+        // A name typed or corrected here goes into the share link straight away
+        document.getElementById('author-display-name').addEventListener('change', () => {
+            if (!this._authorProfileSlug && this._authorPmids?.length) {
+                this._updateAuthorHash(this._authorPmids);
+            }
+        });
+
         // Auto-populate profile name from the name search input
         document.getElementById('author-name-input').addEventListener('change', () => {
             const nameInput = document.getElementById('author-name-input').value.trim();
@@ -3058,6 +3065,7 @@ class IMPACTApp {
             if (profile.name) {
                 document.getElementById('author-name-input').value = profile.name;
             }
+            this._setAuthorName(profile.name || slug.replace(/_/g, ' '));
             document.getElementById('author-profile-name').value = slug;
 
             const papers = await this._fetchICiteBatch(pmids);
@@ -3080,6 +3088,8 @@ class IMPACTApp {
 
     _loadDeepLinkPMIDs(pmids, label) {
         this.showSection('authors');
+        this._authorProfileSlug = null;
+        this._setAuthorName(label || '');
         if (label) {
             document.getElementById('author-name-input').value = label;
             document.getElementById('author-profile-name').value = label.replace(/\s+/g, '_');
@@ -3106,7 +3116,33 @@ class IMPACTApp {
         });
     }
 
-    _updateAuthorHash(pmids, label) {
+    // The researcher's name, shown on downloaded charts and carried in share links
+    _authorName() {
+        return (document.getElementById('author-display-name')?.value || '').trim();
+    }
+
+    _setAuthorName(name) {
+        const input = document.getElementById('author-display-name');
+        if (input) input.value = (name || '').trim().slice(0, 100);
+    }
+
+    // The name on a MyNCBI bibliography page ("Daniel J Tyrrell's Bibliography"),
+    // or failing that the user part of its URL (/myncbi/daniel.tyrrell.1/).
+    _bibliographyName(html, url) {
+        try {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const heading = (doc.getElementById('bibname')?.textContent || '').trim();
+            const m = heading.match(/^(.+?)['’]s\s+Bibliography$/i);
+            if (m) return m[1].trim();
+        } catch (e) { /* fall through to the URL */ }
+        let part = (url.match(/\/myncbi\/([^/?#]+)\//) || [])[1] || '';
+        try { part = decodeURIComponent(part); } catch (e) { /* keep as is */ }
+        if (!part || part === 'collections' || !/[a-z]/i.test(part)) return '';
+        return part.replace(/\.\d+$/, '').split(/[.\s_]+/).filter(Boolean)
+            .map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+    }
+
+    _updateAuthorHash(pmids, label = this._authorName()) {
         // If a profile slug is set, use clean URL; otherwise inline PMIDs
         const slug = this._authorProfileSlug;
         if (slug) {
@@ -3143,7 +3179,7 @@ class IMPACTApp {
             .map(p => String(p.pmid));
 
         const profile = {
-            name: document.getElementById('author-name-input').value.trim() || slug.replace(/_/g, ' '),
+            name: this._authorName() || document.getElementById('author-name-input').value.trim() || slug.replace(/_/g, ' '),
             slug: slug,
             pmids: pmids,
         };
@@ -3235,6 +3271,7 @@ class IMPACTApp {
                 throw new Error('Could not fetch the bibliography from NCBI. Check that the URL is your public MyNCBI bibliography, then try again in a moment.');
             });
 
+            const bibName = this._bibliographyName(page1Html, val);
             const page1Pmids = extractPmids(page1Html);
             if (!page1Pmids.length) {
                 hint.textContent = 'No PMIDs found. Make sure the bibliography is set to public.';
@@ -3294,6 +3331,8 @@ class IMPACTApp {
 
             this._authorTotalFound = pmids.length;
             this._authorPmids = pmids;
+            this._authorProfileSlug = null;
+            this._setAuthorName(bibName);
             this._updateAuthorHash(pmids);
             hint.style.display = 'none';
             results.style.display = '';
@@ -3334,6 +3373,8 @@ class IMPACTApp {
 
             this._authorTotalFound = pmids.length;
             this._authorPmids = pmids;
+            this._authorProfileSlug = null;
+            this._setAuthorName('');
             this._updateAuthorHash(pmids);
             hint.style.display = 'none';
             results.style.display = '';
@@ -3389,6 +3430,8 @@ class IMPACTApp {
             this._authorTotalFound = totalFound;
             const pmids = [...allPmids];
             this._authorPmids = pmids;
+            this._authorProfileSlug = null;
+            this._setAuthorName(label);
             this._updateAuthorHash(pmids, label);
             hint.style.display = 'none';
             results.style.display = '';
@@ -3523,9 +3566,18 @@ class IMPACTApp {
         };
     }
 
+    // Saves an Authors chart with the researcher's name and the chart title above it
+    // and a source line below, so the file says whose record it is.
     _downloadAuthorChart(canvasId, title, format) {
         const chart = chartManager.charts[canvasId];
         if (!chart) return;
+        const name = this._authorName();
+        const heading = name ? `${name} — ${title}` : title;
+        const source = `IMPACT · dantyrr.github.io/IMPACT · Data: NIH iCite · ${new Date().toISOString().slice(0, 10)}`;
+        const slug = (name ? `${name} ${title}` : title).normalize('NFKD').replace(/[̀-ͯ]/g, '')
+            .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        const file = `impact-${slug || canvasId}`;
+
         if (format === 'pdf') {
             if (!window.jspdf) return;
             const { jsPDF } = window.jspdf;
@@ -3533,18 +3585,55 @@ class IMPACTApp {
             const pw = doc.internal.pageSize.getWidth();
             const ph = doc.internal.pageSize.getHeight();
             const imgW = pw - 20;
-            const imgH = Math.min(imgW * (chart.height / chart.width), ph - 28);
-            doc.setFontSize(11);
-            doc.text(`IMPACT — ${title}`, 10, 10);
-            doc.addImage(chart.toBase64Image('image/png', 1), 'PNG', 10, 16, imgW, imgH);
-            doc.save(`impact-${canvasId}.pdf`);
+            const imgH = Math.min(imgW * (chart.height / chart.width), ph - 34);
+            doc.setFontSize(14);
+            doc.text(doc.splitTextToSize(heading, imgW)[0], 10, 12);
+            doc.addImage(this._chartOnWhite(chart, 'image/png'), 'PNG', 10, 18, imgW, imgH);
+            doc.setFontSize(8);
+            doc.setTextColor(102);
+            doc.text(source, 10, 18 + imgH + 7);
+            doc.save(`${file}.pdf`);
             return;
         }
-        const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
+
+        const r = chart.currentDevicePixelRatio || window.devicePixelRatio || 1;
+        const src = chart.canvas;
+        const pad = Math.round(16 * r), headH = Math.round(30 * r), footH = Math.round(22 * r);
+        const out = document.createElement('canvas');
+        out.width = src.width + 2 * pad;
+        out.height = pad + headH + src.height + footH;
+        const ctx = out.getContext('2d');
+        const family = Chart.defaults.font.family;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, out.width, out.height);
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#111111';
+        let size = 16;
+        do {
+            ctx.font = `600 ${Math.round(size * r)}px ${family}`;
+        } while (ctx.measureText(heading).width > out.width - 2 * pad && --size > 9);
+        ctx.fillText(heading, pad, pad + headH / 2);
+        ctx.drawImage(src, pad, pad + headH);
+        ctx.font = `${Math.round(10 * r)}px ${family}`;
+        ctx.fillStyle = '#666666';
+        ctx.fillText(source, pad, pad + headH + src.height + footH / 2);
+
         const a = document.createElement('a');
-        a.href = chart.toBase64Image(mime, 1);
-        a.download = `impact-${canvasId}.${format}`;
+        a.href = out.toDataURL(format === 'jpg' ? 'image/jpeg' : 'image/png', 0.95);
+        a.download = `${file}.${format}`;
         a.click();
+    }
+
+    // The chart drawn on white (a bare chart canvas is transparent)
+    _chartOnWhite(chart, mime) {
+        const out = document.createElement('canvas');
+        out.width = chart.canvas.width;
+        out.height = chart.canvas.height;
+        const ctx = out.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, out.width, out.height);
+        ctx.drawImage(chart.canvas, 0, 0);
+        return out.toDataURL(mime, 0.95);
     }
 
     _showJournalDrill(journalName) {
@@ -3675,7 +3764,7 @@ class IMPACTApp {
             const affils = await GeoTab.fetchAffiliations(papers.map(p => String(p.pmid)),
                 (done, total) => { hint.textContent = `Reading affiliations from PubMed: ${done.toLocaleString()} of ${total.toLocaleString()} papers…`; });
             const located = papers.map(p => ({ year: p.year, ...GeoTab.placesOf(affils.get(String(p.pmid)) || []) }));
-            const label = document.getElementById('author-name-input').value.trim() || 'This researcher';
+            const label = this._authorName() || document.getElementById('author-name-input').value.trim() || 'This researcher';
             const data = GeoTab.aggregate(located, label);
             data.papersLabel = 'Papers with a located author';
             if (!Object.keys(data.papers).length) {
