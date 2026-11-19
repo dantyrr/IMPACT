@@ -3554,7 +3554,7 @@ class IMPACTApp {
             });
         };
         wireChart('pubs', 'author-pubs-chart', 'Publications per Year');
-        wireChart('cits', 'author-cits-chart', 'Citations by Publication Year');
+        wireChart('cits', 'author-cits-chart', 'Citations by Paper Year');
         wireChart('journals', 'author-journals-chart', 'Top Journals');
 
         this._computeReceivedCitsByYear(active);

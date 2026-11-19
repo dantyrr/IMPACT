@@ -958,6 +958,14 @@ footer a:hover {
     border-radius: var(--radius);
     padding: 1rem;
     box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Cards in a row are the same height; the chart sits at the bottom of each, so the
+   charts line up even when one card's title wraps onto a second line. */
+.authors-charts-grid .authors-chart-card .chart-container {
+    margin-top: auto;
 }
 
 .authors-chart-card h4 {
