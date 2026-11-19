@@ -47,6 +47,7 @@ from src.pipeline.db_manager import DatabaseManager
 from src.pipeline.doc_class import NONCOUNTING_CITING, citing_class, classify, icite_evidence
 from src.pipeline.json_exporter import JSONExporter
 from src.pipeline.journal_flags import flags_for_timeseries, settled_rates
+from src.pipeline.journal_list import write_journal_list
 from src.pipeline.impact_calculator import ImpactCalculator
 from src.pipeline.pubmed_full_db import (
     make_byline_scope, open_full_db, store_records, tracked_issns_from_impact,
@@ -749,6 +750,14 @@ def main():
 
     # Update index.json
     update_index(WEBSITE_DATA_DIR, dirty_journals_data)
+
+    # Journal list for the repo (linked from the About page). Not needed by the site,
+    # so a failure here is logged and the run carries on.
+    try:
+        count = write_journal_list(Path(WEBSITE_DATA_DIR) / "index.json", REPO_ROOT / "JOURNALS.csv")
+        logger.info(f"  Wrote {count:,} journals to JOURNALS.csv")
+    except (OSError, ValueError, KeyError) as e:
+        logger.warning(f"  Could not write JOURNALS.csv: {e}")
 
     db.close()
     _print_summary(start_time, new_pmids, dirty_journal_ids,

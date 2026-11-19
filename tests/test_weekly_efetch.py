@@ -469,3 +469,12 @@ def test_update_index_copies_settled_rates(tmp_path):
     entry = json.loads((tmp_path / "index.json").read_text())["journals"][0]
     assert entry["latest_if"] == 11.5
     assert (entry["settled_month"], entry["settled_if"], entry["settled_if_no_reviews"]) == ("2025-10", 34.5, 33.7)
+
+
+def test_main_writes_journal_list_under_repo_root_only(env, tmp_path):
+    real = Path(__file__).resolve().parent.parent / "JOURNALS.csv"
+    before = real.read_bytes() if real.exists() else None
+    weekly.main()
+    assert (tmp_path / "JOURNALS.csv").read_text().splitlines() == [
+        "Journal,Abbreviation,ISSN", "Jour One,,1234-5678"]
+    assert (real.read_bytes() if real.exists() else None) == before
